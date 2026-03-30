@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard · Verifica Placa</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f7f7f5;
+      --surface: #ffffff;
+      --border: #e8e8e4;
+      --text-primary: #1a1a1a;
+      --text-secondary: #6b6b6b;
+      --text-muted: #a0a0a0;
+      --accent: #2563eb;
+      --accent-soft: #eff6ff;
+      --green: #16a34a;
+      --green-soft: #f0fdf4;
+      --red: #dc2626;
+      --red-soft: #fef2f2;
+      --amber: #d97706;
+      --amber-soft: #fffbeb;
+      --radius: 10px;
+      --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.04);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    }
+
+    body { background: var(--bg); color: var(--text-primary); min-height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-primary);
+      text-decoration: none;
+    }
+    .logo-icon {
+      width: 28px; height: 28px;
+      background: var(--accent);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      color: white;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .date-badge {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+    }
+    .last-updated {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ── Layout ── */
+    main { max-width: 1280px; margin: 0 auto; padding: 28px 32px 60px; }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      margin-top: 32px;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    /* ── KPI Cards ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    @media(min-width: 1100px) {
+      .kpi-grid { grid-template-columns: repeat(9, 1fr); }
+    }
+    @media(min-width: 700px) and (max-width: 1099px) {
+      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      transition: box-shadow .15s;
+    }
+    .kpi-card:hover { box-shadow: var(--shadow-md); }
+    .kpi-label {
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 8px;
+    }
+    .kpi-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1;
+      letter-spacing: -.02em;
+    }
+    .kpi-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 5px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    .badge.up { background: var(--green-soft); color: var(--green); }
+    .badge.down { background: var(--red-soft); color: var(--red); }
+    .badge.neutral { background: var(--amber-soft); color: var(--amber); }
+    .kpi-accent-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .kpi-accent-bar.blue  { background: var(--accent); }
+    .kpi-accent-bar.green { background: var(--green); }
+    .kpi-accent-bar.red   { background: var(--red); }
+    .kpi-accent-bar.amber { background: var(--amber); }
+
+    /* ── Charts row ── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 12px;
+    }
+    @media(max-width: 900px) {
+      .charts-row { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .card-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .card-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .chart-container { position: relative; }
+
+    /* ── Campaign table ── */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead tr { border-bottom: 2px solid var(--border); }
+    th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-muted);
+      padding: 0 10px 10px;
+    }
+    th:first-child { padding-left: 4px; }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg); }
+    td {
+      padding: 12px 10px;
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+    td:first-child { padding-left: 4px; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    th.num { text-align: right; }
+    .campaign-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+    .campaign-name {
+      display: flex;
+      align-items: center;
+      font-weight: 500;
+    }
+    .cpa-bar-wrap { display: flex; align-items: center; gap: 8px; }
+    .cpa-bar {
+      flex: 1;
+      height: 5px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .cpa-bar-fill { height: 100%; border-radius: 3px; }
+    .cpa-val { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 32px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ── Data source chip ── */
+    .source-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 9px;
+    }
+    .source-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .4; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="#">
+    <span class="logo-icon">VP</span>
+    Verifica Placa
+  </a>
+  <div class="header-meta">
+    <span class="date-badge">1 mar – 30 mar 2026</span>
+    <span class="last-updated" id="lastUpdated">—</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- KPI Cards -->
+  <div class="section-label">Visão Geral do Mês</div>
+  <div class="kpi-grid" id="kpiGrid"></div>
+
+  <!-- Charts -->
+  <div class="section-label" style="margin-top:28px;">Performance Diária</div>
+  <div class="charts-row">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Receita vs. Investimento</div>
+          <div class="card-subtitle">Acumulado diário (março)</div>
+        </div>
+        <span class="source-chip"><span class="source-dot"></span>Google Ads</span>
+      </div>
+      <div class="chart-container" style="height:240px">
+        <canvas id="revenueChart"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Conversões por Campanha</div>
+          <div class="card-subtitle">Total março</div>
+        </div>
+      </div>
+      <div class="chart-container" style="height:240px">
+        <canvas id="convChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- CPA Chart -->
+  <div class="section-label" style="margin-top:28px;">Custo por Aquisição (CAC)</div>
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">CAC Diário por Campanha</div>
+        <div class="card-subtitle">Meta: R$ 12,00</div>
+      </div>
+    </div>
+    <div class="chart-container" style="height:200px">
+      <canvas id="cacChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Campaign Table -->
+  <div class="section-label" style="margin-top:28px;">Campanhas</div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Detalhamento por Campanha</div>
+    </div>
+    <div class="table-wrap">
+      <table id="campaignTable">
+        <thead>
+          <tr>
+            <th>Campanha</th>
+            <th class="num">Conversões</th>
+            <th class="num">Investimento</th>
+            <th class="num">Receita Bruta</th>
+            <th class="num">Lucro Bruto</th>
+            <th class="num">ROAS</th>
+            <th style="width:160px">CAC</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Dashboard · Verifica Placa &nbsp;·&nbsp; Dados de exemplo — conectar ao Google Sheets para dados reais
+</footer>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+// Trocar esta seção pela leitura do Google Sheets quando conectar dados reais
+
+const TICKET = 25.90;  // Ticket médio (R$)
+const TARGET_CPA = 12.00;
+
+const campaigns = [
+  { name: 'RISCO_DOC',   color: '#2563eb', conversions: 454.0, cost: 4383 },
+  { name: 'ADDONS',      color: '#7c3aed', conversions: 364.0, cost: 3676 },
+  { name: 'RENAVAM',     color: '#0891b2', conversions: 347.5, cost: 4025 },
+  { name: 'ROUBO_FURTO', color: '#d97706', conversions: 253.0, cost: 2604 },
+  { name: 'MULTAS',      color: '#dc2626', conversions: 135.0, cost: 2008 },
+];
+
+// Dados diários simulados (base real de março)
+const days = Array.from({length:30}, (_,i) => {
+  const d = new Date(2026,2,i+1);
+  return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+});
+
+// Gera curva realista: fins de semana têm ~40% menos conversões
+function dailyConv(totalConv) {
+  const weights = days.map((_,i) => {
+    const dow = new Date(2026,2,i+1).getDay();
+    return (dow===0||dow===6) ? 0.6 : 1.1;
+  });
+  const sum = weights.reduce((a,b)=>a+b,0);
+  return weights.map(w => +(totalConv * w / sum).toFixed(1));
+}
+
+const totalConv = campaigns.reduce((s,c)=>s+c.conversions,0);
+const totalCost = campaigns.reduce((s,c)=>s+c.cost,0);
+const totalRevenue = totalConv * TICKET;
+const totalProfit = totalRevenue - totalCost;
+const cac = totalCost / totalConv;
+const roas = totalRevenue / totalCost;
+const margin = (totalProfit / totalRevenue) * 100;
+const convRate = 25.1; // % do CSV
+
+// ─── KPI CARDS ───────────────────────────────────────────────────────────────
+const kpis = [
+  { label: 'Transações',        value: fmt(totalConv,0,''),      sub: 'conversões totais',     color:'blue',  badge:'+12%',  dir:'up' },
+  { label: 'Receita Bruta',     value: fmtBRL(totalRevenue),     sub: 'ticket médio '+fmtBRL(TICKET), color:'blue', badge:'+8%', dir:'up' },
+  { label: 'Ticket Médio',      value: fmtBRL(TICKET),           sub: 'por transação',          color:'blue',  badge:'0%',    dir:'neutral' },
+  { label: 'Investimento Ads',  value: fmtBRL(totalCost),        sub: 'gasto total',            color:'amber', badge:'+5%',   dir:'neutral' },
+  { label: 'CAC',               value: fmtBRL(cac),              sub: 'meta: '+fmtBRL(TARGET_CPA), color: cac<=TARGET_CPA?'green':'red', badge: cac<=TARGET_CPA?'dentro':'+'+fmt((cac-TARGET_CPA)/TARGET_CPA*100,1)+'%', dir: cac<=TARGET_CPA?'up':'down' },
+  { label: 'Lucro Bruto',       value: fmtBRL(totalProfit),      sub: 'após ads',               color:'green', badge:'+6%',   dir:'up' },
+  { label: 'Margem Contribuição', value: fmt(margin,1)+'%',      sub: 'sobre receita bruta',    color: margin>30?'green':'amber', badge:margin>30?'saudável':'atenção', dir: margin>30?'up':'neutral' },
+  { label: 'ROAS',              value: fmt(roas,2,'')+'×',       sub: 'retorno sobre ads',      color: roas>=2?'green':'amber', badge: roas>=2?'bom':'atenção', dir: roas>=2?'up':'neutral' },
+  { label: 'Taxa de Conversão', value: convRate+'%',             sub: 'checkout → compra',      color:'blue',  badge:'+2pp',  dir:'up' },
+];
+
+const grid = document.getElementById('kpiGrid');
+kpis.forEach(k => {
+  const el = document.createElement('div');
+  el.className = 'kpi-card';
+  el.innerHTML = `
+    <div class="kpi-label">${k.label}</div>
+    <div class="kpi-value">${k.value}</div>
+    <div class="kpi-sub">
+      <span class="badge ${k.dir}">${k.dir==='up'?'↑':k.dir==='down'?'↓':'→'} ${k.badge}</span>
+      <span>${k.sub}</span>
+    </div>
+    <div class="kpi-accent-bar ${k.color}"></div>
+  `;
+  grid.appendChild(el);
+});
+
+// ─── CHART: Revenue vs Cost ──────────────────────────────────────────────────
+const dailyCostArr = days.map((_,i) => {
+  const dow = new Date(2026,2,i+1).getDay();
+  return +((totalCost/30) * ((dow===0||dow===6)?0.55:1.08)).toFixed(0);
+});
+const dailyRevArr = dailyCostArr.map(c => +(c / (totalCost/totalRevenue)).toFixed(0));
+
+new Chart(document.getElementById('revenueChart'), {
+  type: 'line',
+  data: {
+    labels: days,
+    datasets: [
+      {
+        label: 'Receita Bruta',
+        data: dailyRevArr,
+        borderColor: '#16a34a',
+        backgroundColor: 'rgba(22,163,74,.07)',
+        fill: true,
+        tension: .35,
+        pointRadius: 0,
+        borderWidth: 2,
+      },
+      {
+        label: 'Investimento',
+        data: dailyCostArr,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37,99,235,.07)',
+        fill: true,
+        tension: .35,
+        pointRadius: 0,
+        borderWidth: 2,
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode:'index', intersect:false },
+    plugins: {
+      legend: { labels:{ font:{size:12}, boxWidth:10, padding:16 } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ' '+ctx.dataset.label+': '+fmtBRL(ctx.raw)
+        }
+      }
+    },
+    scales: {
+      x: { grid:{display:false}, ticks:{ font:{size:10}, maxTicksLimit:10 } },
+      y: { grid:{ color:'rgba(0,0,0,.04)' }, ticks:{ font:{size:10}, callback: v => fmtBRL(v) } }
+    }
+  }
+});
+
+// ─── CHART: Conversions by Campaign (donut) ──────────────────────────────────
+new Chart(document.getElementById('convChart'), {
+  type: 'doughnut',
+  data: {
+    labels: campaigns.map(c=>c.name),
+    datasets: [{
+      data: campaigns.map(c=>c.conversions),
+      backgroundColor: campaigns.map(c=>c.color),
+      borderWidth: 2,
+      borderColor: '#fff',
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    cutout: '62%',
+    plugins: {
+      legend: { position:'bottom', labels:{ font:{size:11}, boxWidth:10, padding:12 } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ' '+ctx.label+': '+fmt(ctx.raw,0,'')+ ' conv'
+        }
+      }
+    }
+  }
+});
+
+// ─── CHART: Daily CAC ────────────────────────────────────────────────────────
+const dailyCacArr = dailyCostArr.map((c,i) => {
+  const conv = dailyRevArr[i] / TICKET;
+  return conv > 0 ? +(c/conv).toFixed(2) : null;
+});
+
+new Chart(document.getElementById('cacChart'), {
+  type: 'bar',
+  data: {
+    labels: days,
+    datasets: [
+      {
+        label: 'CAC',
+        data: dailyCacArr,
+        backgroundColor: dailyCacArr.map(v =>
+          v === null ? 'transparent' :
+          v <= TARGET_CPA ? 'rgba(22,163,74,.7)' :
+          v <= TARGET_CPA * 1.2 ? 'rgba(217,119,6,.7)' :
+          'rgba(220,38,38,.7)'
+        ),
+        borderRadius: 3,
+      },
+      {
+        label: 'Meta',
+        data: days.map(() => TARGET_CPA),
+        type: 'line',
+        borderColor: '#6b6b6b',
+        borderDash: [4,3],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { labels:{ font:{size:12}, boxWidth:10, padding:16 } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ' '+ctx.dataset.label+': '+fmtBRL(ctx.raw)
+        }
+      }
+    },
+    scales: {
+      x: { grid:{display:false}, ticks:{ font:{size:10}, maxTicksLimit:10 } },
+      y: { grid:{ color:'rgba(0,0,0,.04)' }, ticks:{ font:{size:10}, callback: v => 'R$'+v }, min:0 }
+    }
+  }
+});
+
+// ─── TABLE ───────────────────────────────────────────────────────────────────
+const maxCpa = Math.max(...campaigns.map(c=>c.cost/c.conversions));
+const tbody = document.querySelector('#campaignTable tbody');
+campaigns.sort((a,b)=>b.conversions-a.conversions).forEach(c => {
+  const cpa = c.cost/c.conversions;
+  const rev = c.conversions * TICKET;
+  const profit = rev - c.cost;
+  const roasV = rev/c.cost;
+  const pct = Math.round((cpa/maxCpa)*100);
+  const barColor = cpa<=TARGET_CPA?'#16a34a':cpa<=TARGET_CPA*1.2?'#d97706':'#dc2626';
+
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><span class="campaign-name"><span class="campaign-dot" style="background:${c.color}"></span>${c.name}</span></td>
+    <td class="num">${fmt(c.conversions,1,'')}</td>
+    <td class="num">${fmtBRL(c.cost)}</td>
+    <td class="num">${fmtBRL(rev)}</td>
+    <td class="num" style="color:${profit>0?'var(--green)':'var(--red)'}">${fmtBRL(profit)}</td>
+    <td class="num">${fmt(roasV,2,'')}×</td>
+    <td>
+      <div class="cpa-bar-wrap">
+        <div class="cpa-bar"><div class="cpa-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+        <span class="cpa-val" style="color:${barColor}">${fmtBRL(cpa)}</span>
+      </div>
+    </td>
+  `;
+  tbody.appendChild(tr);
+});
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function fmtBRL(v) {
+  return 'R$\u00a0' + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmt(v, dec, prefix='') {
+  return prefix + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+}
+document.getElementById('lastUpdated').textContent = 'Atualizado: '
+  + new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+</script>
+</body>
+</html>
