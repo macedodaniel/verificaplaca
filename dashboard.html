@@ -540,6 +540,7 @@ function buildKPIs(T) {
     { id:'tk',label:'Ticket Médio',        value:fmtR(T.ticket),         sub:'por compra',          color:'blue',   dir:'neutral', badge:'estável',spark:filtered.map(()=>T.ticket),  sc:'#0891b2' },
     { id:'up',label:'Taxa de Upsell',      value:fmtN(T.upsell,1)+'%',  sub:'meta: '+TARGET_UPSELL+'%', color:T.upsell>=TARGET_UPSELL?'green':'amber', dir:T.upsell>=TARGET_UPSELL?'up':'neutral', badge:T.upsell>=TARGET_UPSELL?'meta atingida':fmtN(TARGET_UPSELL-T.upsell,1)+'pp abaixo', spark:filtered.map(d=>d.upsellRate), sc:'#7c3aed' },
     { id:'iv',label:'Investimento Total',  value:fmtR(T.costTotal),      sub:'bureau + ads',        color:'amber',  dir:'neutral', badge:'total',  spark:filtered.map(d=>d.costTotal||0), sc:'#d97706' },
+    { id:'ga',label:'Gasto Google Ads',   value:fmtR(T.cost),           sub:'custo_ads',            color:'amber',  dir:'neutral', badge:'ads',    spark:filtered.map(d=>d.cost||0),     sc:'#f59e0b' },
     { id:'cv',label:'Taxa de Conversão',   value:fmtN(T.convRate,2)+'%', sub:'checkout → compra',  color:'blue',   dir:'up',      badge:'+2pp',   spark:filtered.map(()=>T.convRate), sc:'#0891b2' },
   ];
   renderRow('kpiRow1', row1);
