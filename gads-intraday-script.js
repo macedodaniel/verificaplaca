@@ -24,6 +24,15 @@ function main() {
   var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
 
+  // Auto-backfill: se GAds_Historico tiver menos de 7 dias, roda o backfill completo primeiro
+  var hist = ss.getSheetByName(HIST_SHEET_NAME);
+  var histRows = hist ? hist.getLastRow() : 0;
+  if (histRows < 7) {
+    Logger.log("GAds_Historico incompleto (" + histRows + " linhas). Rodando backfill automático...");
+    backfillGAdsHistory();
+    Logger.log("Backfill concluído. Continuando sync de hoje...");
+  }
+
   var today = Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd");
   var now   = Utilities.formatDate(new Date(), TIMEZONE, "dd/MM/yyyy HH:mm");
 
@@ -167,7 +176,12 @@ function backfillGAdsHistory() {
   var hist = ss.getSheetByName(HIST_SHEET_NAME);
   if (!hist) hist = ss.insertSheet(HIST_SHEET_NAME);
 
-  // Consulta GAQL com segmento de data para os últimos DAYS_BACK dias
+  // Calcula intervalo de datas (GAQL não aceita LAST_60_DAYS — usa BETWEEN)
+  var endDate   = new Date();
+  var startDate = new Date();
+  startDate.setDate(startDate.getDate() - DAYS_BACK);
+  var fmt = function(d) { return Utilities.formatDate(d, TIMEZONE, "yyyy-MM-dd"); };
+
   var query = [
     "SELECT",
     "  segments.date,",
@@ -177,7 +191,7 @@ function backfillGAdsHistory() {
     "  metrics.conversions,",
     "  metrics.conversions_value",
     "FROM campaign",
-    "WHERE segments.date DURING LAST_" + DAYS_BACK + "_DAYS",
+    "WHERE segments.date BETWEEN '" + fmt(startDate) + "' AND '" + fmt(endDate) + "'",
     "  AND campaign.status != 'REMOVED'"
   ].join(" ");
 
