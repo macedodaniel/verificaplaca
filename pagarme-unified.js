@@ -1395,30 +1395,47 @@ function _readGAdsDaily_(ss) {
   const result = new Map();
 
   // ── Lê histórico do report diário (GAds_Diario) ──────────────────────────
+  // Suporta exports do add-on em PT ("Data","Dia","Custo","Custo total") e EN ("Day","Date","Cost")
   const sh = ss.getSheetByName("GAds_Diario");
   if (sh) {
     const values = sh.getDataRange().getValues();
     if (values.length >= 2) {
       let headerIdx = -1;
-      for (let r = 0; r < Math.min(5, values.length); r++) {
+      for (let r = 0; r < Math.min(6, values.length); r++) {
         const row = values[r].map(h => _normGAds_(h));
-        if (row.some(h => h === "dia" || h === "day")) { headerIdx = r; break; }
+        const isDateCol = h => h === "dia" || h === "day" || h === "data" || h === "date";
+        if (row.some(isDateCol)) { headerIdx = r; break; }
       }
-      if (headerIdx >= 0) {
+      if (headerIdx < 0) {
+        Logger.log("GAds_Diario: coluna de data não encontrada nas primeiras 6 linhas. Headers linha 0: " +
+          values[0].join(" | "));
+      } else {
         const header = values[headerIdx].map(h => _normGAds_(h));
-        const cDay  = header.findIndex(h => h === "dia"   || h === "day");
-        const cCost = header.findIndex(h => h === "custo" || h === "cost");
+        const isDateCol = h => h === "dia" || h === "day" || h === "data" || h === "date";
+        const isCostCol = h => h === "custo" || h === "cost" || h === "custo_total" ||
+                               h === "custo_com_conv_" || h.startsWith("custo") && !h.includes("bureau");
+        const cDay  = header.findIndex(isDateCol);
+        const cCost = header.findIndex(isCostCol);
+        Logger.log("GAds_Diario: headerIdx=" + headerIdx + " cDay=" + cDay + " cCost=" + cCost +
+                   " headers=" + header.join("|"));
         if (cDay >= 0 && cCost >= 0) {
           for (let i = headerIdx + 1; i < values.length; i++) {
-            const row    = values[i];
-            const dayStr = String(row[cDay] || "").trim();
+            const row = values[i];
+            const rawDay = row[cDay];
+            const dayStr = (rawDay instanceof Date)
+              ? Utilities.formatDate(rawDay, TZ, "yyyy-MM-dd")
+              : String(rawDay || "").trim();
             if (!dayStr || /total|subtotal/i.test(dayStr)) continue;
             const key  = _normalizeGAdsDate_(dayStr);
             if (!key) continue;
             const cost = _parseGAdsNum_(row[cCost]);
-            if (cost > 50000) { Logger.log("GAds_Diario: valor suspeito → " + cost); continue; }
+            if (cost > 50000) { Logger.log("GAds_Diario: valor suspeito linha " + (i+1) + " → " + cost); continue; }
             result.set(key, { cost: ((result.get(key) || {}).cost || 0) + cost });
           }
+          Logger.log("GAds_Diario: " + result.size + " dias lidos, custo total = R$" +
+            Array.from(result.values()).reduce((s,v)=>s+v.cost,0).toFixed(2));
+        } else {
+          Logger.log("GAds_Diario: colunas não encontradas. Headers: " + header.join(" | "));
         }
       }
     }
@@ -1446,7 +1463,10 @@ function _readGAdsDaily_(ss) {
           const cost = _parseGAdsNum_(vals[i][cCost]);
           result.set(dateStr, { cost });
         }
-        Logger.log("GAds_Historico: " + (vals.length - 1) + " dias carregados.");
+        const histTotal = Array.from(result.values()).reduce((s,v)=>s+v.cost,0);
+        Logger.log("GAds_Historico: " + (vals.length - 1) + " dias, custo total = R$" + histTotal.toFixed(2));
+      } else {
+        Logger.log("GAds_Historico: colunas date/cost não encontradas. Headers: " + vals[0].join(" | "));
       }
     }
   }
