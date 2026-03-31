@@ -305,7 +305,7 @@ const MONTHLY = { revenue:27334.04, cost:20740.63, conv:1898, profit:6237.85, ro
 // ─── GOOGLE SHEETS CSV DATA SOURCE ───────────────────────────────────────────
 // Paste the "Publicar na web → CSV" URL of the Dashboard tab here.
 // Leave empty ("") to use example data.
-const CSW_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTqbE08eyRjAugsJ4ZZG7-jUf9MG6UfbOuOm4W_nONBZUs8nM6OaHWxso4_7A1NJVJnsgfgDjzOGfER/pub?gid=2140356170&single=true&output=csv";
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTqbE08eyRjAugsJ4ZZG7-jUf9MG6UfbOuOm4W_nONBZUs8nM6OaHWxso4_7A1NJVJnsgfgDjzOGfER/pub?gid=2140356170&single=true&output=csv";
 
 // ─── EXAMPLE DATA (fallback when CSV_URL is empty or fetch fails) ─────────────
 function makeDays() {
@@ -345,10 +345,20 @@ function parseCSVLine(line) {
   return cols;
 }
 
+// Parse Brazilian-formatted numbers: "R$ 1.234,56" → 1234.56, "79,58" → 79.58
+function parseBRL(s) {
+  if (!s) return 0;
+  s = String(s).replace(/"/g, '').trim();
+  s = s.replace(/R\$\s*/i, '');           // strip currency symbol
+  s = s.replace(/\./g, '');              // remove thousand separators (dots in BR)
+  s = s.replace(',', '.');               // decimal comma → dot
+  return parseFloat(s) || 0;
+}
+
 function parseCSVText(text) {
   const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').trim().split('\n');
   if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim().replace(/_/g,'_').replace(/"/g,'').toLowerCase());
+  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,'').toLowerCase());
   const idx = name => headers.findIndex(h => h === name || h.startsWith(name));
   const cDate    = idx('data');       const cCostAds = idx('custo_ads');
   const cCostBur = idx('custo_bureau'); const cCostTot = idx('custo_total');
@@ -362,19 +372,19 @@ function parseCSVText(text) {
     if (cols.length < 2) continue;
     const dateStr   = (cols[cDate] || '').replace(/"/g,'').trim();
     if (!dateStr || dateStr === 'data') continue;
-    const cost        = parseFloat(cols[cCostAds] || '0') || 0;
-    const costBureau  = parseFloat(cols[cCostBur] || '0') || 0;
+    const cost        = parseBRL(cols[cCostAds]);
+    const costBureau  = parseBRL(cols[cCostBur]);
     const costTotal   = cCostTot >= 0
-      ? (parseFloat(cols[cCostTot] || '0') || 0)
+      ? parseBRL(cols[cCostTot])
       : +(cost + costBureau).toFixed(2);
-    const revenue     = parseFloat(cols[cRev]     || '0') || 0;
-    const pedidos     = parseInt  (cols[cPed]      || '0') || 0;
-    const checkouts   = parseFloat(cols[cChk]     || '0') || 0;
-    const conv        = parseFloat(cols[cPur]     || '0') || 0;
+    const revenue     = parseBRL(cols[cRev]);
+    const pedidos     = parseInt((cols[cPed] || '0').replace(/"/g,'')) || 0;
+    const checkouts   = parseBRL(cols[cChk]);
+    const conv        = parseBRL(cols[cPur]);
     const profit      = cLucro >= 0
-      ? (parseFloat(cols[cLucro]  || '0') || 0)
+      ? parseBRL(cols[cLucro])
       : +(revenue - costTotal).toFixed(2);
-    const upsellRate  = parseFloat(cols[cUpsellPct] || '0') || 0;
+    const upsellRate  = parseBRL(cols[cUpsellPct]);
     const date        = new Date(dateStr + 'T00:00:00');
     days.push({ date, dateStr, cost, costBureau, costTotal,
                 revenue, conv, profit, checkouts, upsellRate, pedidos,
@@ -782,7 +792,7 @@ async function initDashboard() {
         usingRealData = true;
         document.getElementById('footerBar').textContent =
           'Verifica Placa · Dashboard · Google Sheets · Atualizado: ' +
-          new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:2-digit',minute:'2-digit'});
+          new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
       } else {
         throw new Error('CSV vazio');
       }
