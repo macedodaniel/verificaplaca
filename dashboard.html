@@ -72,8 +72,8 @@
     /* KPI Rows — align-items:start prevents cards from stretching to each other's height */
     .kpi-row { display: grid; gap: 10px; margin-bottom: 10px; align-items: start; }
     .kpi-row-1 { grid-template-columns: repeat(6, 1fr); }
-    .kpi-row-2 { grid-template-columns: repeat(5, 1fr); }
-    @media (max-width: 1400px) { .kpi-row-1 { grid-template-columns: repeat(3, 1fr); } }
+    .kpi-row-2 { grid-template-columns: repeat(6, 1fr); }
+    @media (max-width: 1400px) { .kpi-row-1, .kpi-row-2 { grid-template-columns: repeat(3, 1fr); } }
     @media (max-width: 1200px) { .kpi-row-1, .kpi-row-2 { grid-template-columns: repeat(3, 1fr); } }
     @media (max-width: 700px)  { .kpi-row-1, .kpi-row-2 { grid-template-columns: repeat(2, 1fr); } }
 
@@ -531,17 +531,17 @@ function buildKPIs(T) {
     { id:'ct',label:'Custo Total',         value:fmtR(T.costTotal),      sub:'ads + bureau',        color:'red',    dir:'neutral', badge:'custos',  spark:filtered.map(d=>d.costTotal||0), sc:'#dc2626' },
     { id:'p', label:'Lucro Bruto',         value:fmtR(T.pft),            sub:'receita − ads − bureau', color:T.pft>=0?'green':'red', dir:T.pft>=0?'up':'down', badge:T.pft>=0?'positivo':'negativo', spark:filtered.map(d=>d.profit||0), sc:T.pft>=0?'#16a34a':'#dc2626' },
     { id:'m', label:'Margem',              value:fmtN(T.margin*100,1)+'%', sub:'contribuição real',  color:T.margin>=.22?'green':'amber', dir:T.margin>=.22?'up':'neutral', badge:T.margin>=.22?'saudável':'atenção', spark:filtered.map(d=>d.revenue>0?((d.profit||0)/d.revenue)*100:0), sc:'#16a34a' },
-    { id:'ro',label:'ROAS',                value:fmtN(T.roas,2,'')+'×',  sub:'retorno s/ investimento',      color:T.roas>=1.5?'green':'amber', dir:T.roas>=1.5?'up':'neutral', badge:T.roas>=1.5?'bom':'atenção', spark:filtered.map(d=>d.costTotal>0?d.revenue/d.costTotal:0), sc:'#2563eb' },
+    { id:'ro',label:'ROAS',                value:fmtN(T.roas,2,'')+'×',  sub:'retorno s/ investimento', color:T.roas>=1.5?'green':'amber', dir:T.roas>=1.5?'up':'neutral', badge:T.roas>=1.5?'bom':'atenção', spark:filtered.map(d=>d.costTotal>0?d.revenue/d.costTotal:0), sc:'#2563eb' },
     { id:'ca',label:'CAC',                 value:T.cac>0?fmtR(T.cac):'—', sub:'meta: '+fmtR(TARGET_CPA), color:T.cac>0&&T.cac<=TARGET_CPA?'green':T.cac>0?'red':'blue', dir:T.cac>0&&T.cac<=TARGET_CPA?'up':T.cac>0?'down':'neutral', badge:T.cac>0&&T.cac<=TARGET_CPA?'dentro da meta':T.cac>0?'acima da meta':'s/ ads', spark:filtered.map(d=>d.cac), sc:T.cac>0&&T.cac<=TARGET_CPA?'#16a34a':'#dc2626' },
   ];
   const row2 = [
-    // Row 2: How did we drive those results?
-    { id:'tr',label:'Transações',          value:fmtN(T.conv,0,''),      sub:'conversões',          color:'blue',   dir:'up',      badge:'+12%',   spark:filtered.map(d=>d.conv),     sc:'#2563eb' },
-    { id:'tk',label:'Ticket Médio',        value:fmtR(T.ticket),         sub:'por compra',          color:'blue',   dir:'neutral', badge:'estável',spark:filtered.map(()=>T.ticket),  sc:'#0891b2' },
+    // Row 2: Cost breakdown + operational drivers (below Receita Bruta / Custo Total)
+    { id:'ga',label:'Gasto Google Ads',    value:fmtR(T.cost),           sub:'custo_ads',            color:'amber',  dir:'neutral', badge:'ads',    spark:filtered.map(d=>d.cost||0),          sc:'#f59e0b' },
+    { id:'gb',label:'Gasto Bureau',        value:fmtR(T.costBureau),     sub:'custo_bureau',         color:'amber',  dir:'neutral', badge:'bureau', spark:filtered.map(d=>d.costBureau||0),    sc:'#d97706' },
+    { id:'tr',label:'Transações',          value:fmtN(T.conv,0,''),      sub:'conversões',           color:'blue',   dir:'up',      badge:'+12%',   spark:filtered.map(d=>d.conv),             sc:'#2563eb' },
+    { id:'tk',label:'Ticket Médio',        value:fmtR(T.ticket),         sub:'por compra',           color:'blue',   dir:'neutral', badge:'estável',spark:filtered.map(()=>T.ticket),          sc:'#0891b2' },
     { id:'up',label:'Taxa de Upsell',      value:fmtN(T.upsell,1)+'%',  sub:'meta: '+TARGET_UPSELL+'%', color:T.upsell>=TARGET_UPSELL?'green':'amber', dir:T.upsell>=TARGET_UPSELL?'up':'neutral', badge:T.upsell>=TARGET_UPSELL?'meta atingida':fmtN(TARGET_UPSELL-T.upsell,1)+'pp abaixo', spark:filtered.map(d=>d.upsellRate), sc:'#7c3aed' },
-    { id:'iv',label:'Investimento Total',  value:fmtR(T.costTotal),      sub:'bureau + ads',        color:'amber',  dir:'neutral', badge:'total',  spark:filtered.map(d=>d.costTotal||0), sc:'#d97706' },
-    { id:'ga',label:'Gasto Google Ads',   value:fmtR(T.cost),           sub:'custo_ads',            color:'amber',  dir:'neutral', badge:'ads',    spark:filtered.map(d=>d.cost||0),     sc:'#f59e0b' },
-    { id:'cv',label:'Taxa de Conversão',   value:fmtN(T.convRate,2)+'%', sub:'checkout → compra',  color:'blue',   dir:'up',      badge:'+2pp',   spark:filtered.map(()=>T.convRate), sc:'#0891b2' },
+    { id:'cv',label:'Taxa de Conversão',   value:fmtN(T.convRate,2)+'%', sub:'checkout → compra',   color:'blue',   dir:'up',      badge:'+2pp',   spark:filtered.map(()=>T.convRate),        sc:'#0891b2' },
   ];
   renderRow('kpiRow1', row1);
   renderRow('kpiRow2', row2);
@@ -647,7 +647,7 @@ function buildCharts(T) {
     labels,
     datasets:[
       { label:'Receita Bruta', data:d.map(x=>x.revenue), borderColor:'#16a34a', backgroundColor:'rgba(22,163,74,.06)', fill:true, tension:.3, pointRadius:d.length>20?2:3, pointHoverRadius:5, pointBackgroundColor:'#16a34a', borderWidth:2 },
-      { label:'Investimento',  data:d.map(x=>x.costTotal||0),    borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.06)', fill:true, tension:.3, pointRadius:d.length>20?2:3, pointHoverRadius:5, pointBackgroundColor:'#2563eb', borderWidth:2 },
+      { label:'Investimento',  data:d.map(x=>x.costTotal||0), borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.06)', fill:true, tension:.3, pointRadius:d.length>20?2:3, pointHoverRadius:5, pointBackgroundColor:'#2563eb', borderWidth:2 },
     ]
   },{
     responsive:true, maintainAspectRatio:false,
@@ -759,7 +759,7 @@ function buildCharts(T) {
       tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+(typeof c.raw==='number'?c.raw.toFixed(1)+'%':c.raw)}},
       datalabels:{
         display: ctx => ctx.datasetIndex===0,
-        anchor:'end', align:'und',
+        anchor:'end', align:'end',
         formatter: v => v.toFixed(0)+'%',
         font:{ size: d.length>14 ? 7.5 : 9, weight:'600' },
         color: ctx => ctx.dataset.data[ctx.dataIndex]>=TARGET_UPSELL ? '#5b21b6' : '#7c3aed',
