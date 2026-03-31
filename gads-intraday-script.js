@@ -119,41 +119,103 @@ function main() {
 }
 
 // ─── HISTÓRICO DIÁRIO ─────────────────────────────────────────────────────────
+var HIST_HEADERS = ["data","custo","impressoes","cliques","conversoes","valor_conversao","atualizado_em"];
+
 function updateHistory_(ss, today, cost, impr, clicks, conv, convVal, now) {
   var hist = ss.getSheetByName(HIST_SHEET_NAME);
   if (!hist) hist = ss.insertSheet(HIST_SHEET_NAME);
 
-  var HEADERS = ["data","custo","impressoes","cliques","conversoes","valor_conversao","atualizado_em"];
-  var newRow  = [today, cost, impr, clicks, conv, convVal, now];
+  var newRow = [today, cost, impr, clicks, conv, convVal, now];
+  var data   = hist.getDataRange().getValues();
 
-  var data = hist.getDataRange().getValues();
+  // Verifica se a primeira linha é realmente o cabeçalho esperado
+  var hasHeader = data.length > 0 && String(data[0][0]).trim().toLowerCase() === "data";
 
-  // Inicializa cabeçalho se a aba estiver vazia
-  if (data.length === 0) {
-    hist.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
-    hist.getRange(2, 1, 1, HEADERS.length).setValues([newRow]);
-    hist.autoResizeColumns(1, HEADERS.length);
+  if (!hasHeader) {
+    // Recria aba do zero (estava vazia ou com lixo)
+    hist.clearContents();
+    hist.getRange(1, 1, 1, HIST_HEADERS.length).setValues([HIST_HEADERS]);
+    hist.getRange(2, 1, 1, HIST_HEADERS.length).setValues([newRow]);
+    hist.autoResizeColumns(1, HIST_HEADERS.length);
     return;
   }
 
-  // Procura linha com a data de hoje para fazer upsert
+  // Procura linha com a data para fazer upsert
   for (var i = 1; i < data.length; i++) {
-    var rowDate = data[i][0];
+    var rowDate    = data[i][0];
     var rowDateStr = (rowDate instanceof Date)
       ? Utilities.formatDate(rowDate, TIMEZONE, "yyyy-MM-dd")
       : String(rowDate || "").trim().substring(0, 10);
     if (rowDateStr === today) {
-      // Atualiza linha existente
-      hist.getRange(i + 1, 1, 1, HEADERS.length).setValues([newRow]);
-      hist.autoResizeColumns(1, HEADERS.length);
+      hist.getRange(i + 1, 1, 1, HIST_HEADERS.length).setValues([newRow]);
+      hist.autoResizeColumns(1, HIST_HEADERS.length);
       return;
     }
   }
 
-  // Data não existe ainda → append
-  var nextRow = data.length + 1;
-  hist.getRange(nextRow, 1, 1, HEADERS.length).setValues([newRow]);
-  hist.autoResizeColumns(1, HEADERS.length);
+  // Data nova → append
+  hist.getRange(data.length + 1, 1, 1, HIST_HEADERS.length).setValues([newRow]);
+  hist.autoResizeColumns(1, HIST_HEADERS.length);
+}
+
+// ─── BACKFILL: últimos N dias ─────────────────────────────────────────────────
+// Rode UMA VEZ manualmente para popular o histórico completo.
+// Em ads.google.com → Scripts → selecione "backfillGAdsHistory" no dropdown → ▶
+function backfillGAdsHistory() {
+  var DAYS_BACK = 60; // quantos dias buscar
+  var ss   = SpreadsheetApp.openById(SHEET_ID);
+  var hist = ss.getSheetByName(HIST_SHEET_NAME);
+  if (!hist) hist = ss.insertSheet(HIST_SHEET_NAME);
+
+  // Consulta GAQL com segmento de data para os últimos DAYS_BACK dias
+  var query = [
+    "SELECT",
+    "  segments.date,",
+    "  metrics.cost_micros,",
+    "  metrics.impressions,",
+    "  metrics.clicks,",
+    "  metrics.conversions,",
+    "  metrics.conversions_value",
+    "FROM campaign",
+    "WHERE segments.date DURING LAST_" + DAYS_BACK + "_DAYS",
+    "  AND campaign.status != 'REMOVED'"
+  ].join(" ");
+
+  var report = AdsApp.search(query);
+
+  // Agrega por data
+  var byDate = {};
+  while (report.hasNext()) {
+    var row     = report.next();
+    var date    = row.segments.date;          // "yyyy-MM-dd"
+    var metrics = row.metrics;
+    if (!byDate[date]) byDate[date] = { cost:0, impr:0, clicks:0, conv:0, convVal:0 };
+    byDate[date].cost    += (metrics.costMicros      || 0) / 1e6;
+    byDate[date].impr    += parseInt(metrics.impressions      || 0, 10);
+    byDate[date].clicks  += parseInt(metrics.clicks           || 0, 10);
+    byDate[date].conv    += parseFloat(metrics.conversions    || 0);
+    byDate[date].convVal += parseFloat(metrics.conversionsValue || 0);
+  }
+
+  var dates   = Object.keys(byDate).sort();
+  var now     = Utilities.formatDate(new Date(), TIMEZONE, "dd/MM/yyyy HH:mm");
+
+  // Recria aba com cabeçalho + todos os dias ordenados
+  hist.clearContents();
+  hist.getRange(1, 1, 1, HIST_HEADERS.length).setValues([HIST_HEADERS]);
+
+  var rows = dates.map(function(d) {
+    var v = byDate[d];
+    return [d, round2(v.cost), v.impr, v.clicks, round2(v.conv), round2(v.convVal), now];
+  });
+
+  if (rows.length) {
+    hist.getRange(2, 1, rows.length, HIST_HEADERS.length).setValues(rows);
+  }
+  hist.autoResizeColumns(1, HIST_HEADERS.length);
+
+  Logger.log("backfillGAdsHistory: " + rows.length + " dias gravados em " + HIST_SHEET_NAME);
+  Logger.log("Custo total: R$" + rows.reduce(function(s,r){ return s + r[1]; }, 0).toFixed(2));
 }
 
 function round2(n) { return Math.round(n * 100) / 100; }
