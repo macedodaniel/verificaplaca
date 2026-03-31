@@ -1426,9 +1426,34 @@ function _readGAdsDaily_(ss) {
     Logger.log('Aba "GAds_Diario" não encontrada.');
   }
 
+  // ── Lê histórico acumulado pelo Google Ads Script (GAds_Historico) ──────────
+  // Mesma estrutura que GAds_Hoje mas com 1 linha por dia (nunca sobrescreve).
+  // Tem prioridade sobre GAds_Diario (add-on) para todos os dias.
+  const shHist = ss.getSheetByName("GAds_Historico");
+  if (shHist) {
+    const vals = shHist.getDataRange().getValues();
+    if (vals.length >= 2) {
+      const hdr   = vals[0].map(h => _normGAds_(h));
+      const cDate = hdr.findIndex(h => h === "data" || h === "dia");
+      const cCost = hdr.findIndex(h => h === "custo" || h === "cost");
+      if (cDate >= 0 && cCost >= 0) {
+        for (let i = 1; i < vals.length; i++) {
+          const raw = vals[i][cDate];
+          const dateStr = (raw instanceof Date)
+            ? Utilities.formatDate(raw, TZ, "yyyy-MM-dd")
+            : _normalizeGAdsDate_(String(raw || "").trim());
+          if (!dateStr) continue;
+          const cost = _parseGAdsNum_(vals[i][cCost]);
+          result.set(dateStr, { cost });
+        }
+        Logger.log("GAds_Historico: " + (vals.length - 1) + " dias carregados.");
+      }
+    }
+  }
+
   // ── Sobrescreve HOJE com dados intraday do Google Ads Script (GAds_Hoje) ──
   // A aba GAds_Hoje é gravada pelo script externo a cada hora e tem prioridade
-  // sobre o report diário para a data corrente.
+  // sobre qualquer outra fonte para a data corrente.
   const shHoje = ss.getSheetByName("GAds_Hoje");
   if (shHoje) {
     const vals = shHoje.getDataRange().getValues();
@@ -1438,9 +1463,13 @@ function _readGAdsDaily_(ss) {
       const cDate  = hdr.findIndex(h => h === "data"  || h === "dia");
       const cCosto = hdr.findIndex(h => h === "custo" || h === "cost");
       if (cDate >= 0 && cCosto >= 0) {
-        const row     = vals[1];
-        const dateStr = String(row[cDate] || "").trim().substring(0, 10);
-        const cost    = _parseGAdsNum_(row[cCosto]);
+        const row  = vals[1];
+        const raw  = row[cDate];
+        // raw pode ser Date (Sheets auto-converte) ou string "yyyy-MM-dd"
+        const dateStr = (raw instanceof Date)
+          ? Utilities.formatDate(raw, TZ, "yyyy-MM-dd")
+          : _normalizeGAdsDate_(String(raw || "").trim());
+        const cost = _parseGAdsNum_(row[cCosto]);
         if (dateStr && cost >= 0) {
           result.set(dateStr, { cost });
           Logger.log("GAds_Hoje: sobreposição para " + dateStr + " → R$" + cost);
