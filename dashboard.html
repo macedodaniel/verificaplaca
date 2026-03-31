@@ -148,6 +148,8 @@
     td { padding: 11px 10px; vertical-align: middle; }
     td:first-child { padding-left: 4px; }
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .tr-total { border-top: 2px solid var(--border) !important; border-bottom: none !important; background: #f8fafc; font-weight: 700; }
+    .tr-total:hover { background: #f1f5f9 !important; }
     th.num { text-align: right; }
     .cname { display: flex; align-items: center; font-weight: 500; }
     .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
@@ -285,9 +287,9 @@
 
   <!-- Upsell type table -->
   <div class="section-label" style="margin-top:24px">Upsell por Tipo · Período Selecionado</div>
-  <div class="card" style="padding:0">
+  <div class="card">
     <div class="table-wrap">
-      <table id="upsellTypeTable" style="font-size:13px">
+      <table id="upsellTypeTable">
         <thead><tr>
           <th>Tipo de Upsell</th>
           <th class="num">Pedidos</th>
@@ -646,16 +648,10 @@ function buildCharts(T) {
   const labels = d.map(lbl);
 
   // 1. Revenue vs Cost — line, tooltips only (30 points too dense for labels)
-  const _revLblSize = d.length > 14 ? 7 : d.length > 7 ? 8.5 : 10;
-  const _revShowLbl = ctx => {
-    const n = ctx.dataset.data.length;
-    if (n <= 7)  return true;                       // ≤7 dias: mostra tudo
-    if (n <= 14) return ctx.dataIndex % 2 === 0;    // ≤14 dias: dias alternados
-    // >14: só primeiro, último e max de cada série
-    const data = ctx.dataset.data;
-    const max  = Math.max(...data);
-    return ctx.dataIndex === 0 || ctx.dataIndex === n-1 || data[ctx.dataIndex] === max;
-  };
+  const _revN       = d.length;
+  const _revStep    = _revN <= 7 ? 1 : _revN <= 14 ? 2 : _revN <= 21 ? 3 : _revN <= 31 ? 4 : 5;
+  const _revLblSize = _revN > 21 ? 7.5 : _revN > 14 ? 8.5 : _revN > 7 ? 9 : 10;
+  const _revShowLbl = ctx => ctx.dataIndex % _revStep === 0 || ctx.dataIndex === _revN - 1;
   mkChart('revenueChart','line', {
     labels,
     datasets:[
@@ -664,18 +660,20 @@ function buildCharts(T) {
     ]
   },{
     responsive:true, maintainAspectRatio:false,
+    layout:{ padding:{ top:22, right:52, bottom:4, left:4 } },
     interaction:{mode:'index',intersect:false},
     plugins:{
       legend:{labels:{font:{size:11.5},boxWidth:10,padding:14}},
       tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+fmtR(c.raw)}},
       datalabels:{
+        clip: false,
         display: _revShowLbl,
         anchor: ctx => ctx.datasetIndex === 0 ? 'end' : 'start',
         align:  ctx => ctx.datasetIndex === 0 ? 'top' : 'bottom',
-        formatter: v => 'R$'+( v >= 1000 ? (v/1000).toFixed(1)+'k' : Math.round(v) ),
+        formatter: v => v >= 1000 ? 'R$'+(v/1000).toFixed(1)+'k' : v > 0 ? 'R$'+Math.round(v) : null,
         font:{ size: _revLblSize, weight:'600' },
         color: ctx => ctx.datasetIndex === 0 ? '#15803d' : '#1d4ed8',
-        padding: 2,
+        padding: { left:2, right:2, top:1, bottom:1 },
       }
     },
     scales:{ x:{grid:{display:false},ticks:{font:{size:10.5},maxTicksLimit:10}},
@@ -884,7 +882,7 @@ function buildUpsellTypeTable() {
   // Totals row
   const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
   const tfoot = document.createElement('tr');
-  tfoot.style.cssText = 'font-weight:700;border-top:2px solid var(--border);background:var(--bg-hover)';
+  tfoot.className = 'tr-total';
   tfoot.innerHTML = `<td>Total</td><td class="num">${totalCount}</td><td class="num">100%</td><td class="num">${fmtR(totalRevenue)}</td>`;
   tbody.appendChild(tfoot);
 }
