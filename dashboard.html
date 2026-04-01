@@ -137,6 +137,30 @@
     .dow-badge.best  { background: #dcfce7; color: #15803d; }
     .dow-badge.worst { background: #fee2e2; color: #b91c1c; }
 
+    /* Freshness dot */
+    .fresh-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .fresh-dot.green  { background: var(--green); }
+    .fresh-dot.amber  { background: var(--amber); }
+    .fresh-dot.red    { background: var(--red);   }
+    #freshnessWrap { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-muted); }
+
+    /* Today Pace bar */
+    .pace-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+                 padding: 14px 18px; box-shadow: var(--shadow); margin-bottom: 12px; }
+    .pace-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
+    .pace-title  { font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; }
+    .pace-grid   { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    @media (max-width: 600px) { .pace-grid { grid-template-columns: 1fr 1fr; } }
+    .pace-stat   { display: flex; flex-direction: column; gap: 2px; }
+    .pace-lbl    { font-size: 10.5px; color: var(--text-muted); font-weight: 500; }
+    .pace-val    { font-size: 16px; font-weight: 700; }
+    .pace-sub    { font-size: 10.5px; color: var(--text-muted); }
+    .pace-bar-wrap { margin-top: 4px; }
+    .pace-bar-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 3px; }
+    .pace-track  { position: relative; height: 8px; background: var(--border); border-radius: 4px; overflow: visible; }
+    .pace-fill   { height: 100%; border-radius: 4px; transition: width .5s; }
+    .pace-marker { position: absolute; top: -3px; width: 2px; height: 14px; background: rgba(0,0,0,.25); border-radius: 1px; transform: translateX(-50%); }
+
     /* Alert */
     .alert-bar { display: flex; align-items: center; gap: 10px; background: var(--amber-soft);
       border: 1px solid #fde68a; border-radius: var(--radius); padding: 10px 14px;
@@ -259,11 +283,14 @@
         </div>
       </div>
     </div>
-    <span id="lastUpdated" style="font-size:11.5px;color:var(--text-muted)"></span>
+    <span id="freshnessWrap"><span class="fresh-dot" id="freshDot"></span><span id="lastUpdated"></span></span>
   </div>
 </header>
 
 <main>
+
+  <!-- Today Pace — só visível quando filtro = Hoje -->
+  <div id="todayPace" style="display:none"></div>
 
   <div id="alertBar" class="alert-bar" style="display:none">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L14.5 13H1.5L8 1.5Z" stroke="#d97706" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6v3.5M8 11.5v.5" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -621,6 +648,8 @@ function pctDelta(curr, prev, reverse) {
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 function render() {
   const T = totals();
+  buildFreshness();
+  buildTodayPace();
   buildKPIs(T);
   buildGauges(T);
   buildAlertBar(T);
@@ -633,7 +662,6 @@ function render() {
   const rangeStr = d.length===1 ? fmt2(d[0].dateStr) : `${fmt2(d[0].dateStr)} – ${fmt2(d[d.length-1].dateStr)}`;
   document.getElementById('chartSub').textContent = rangeStr;
   document.getElementById('convSub').textContent = fmtN(T.conv,0)+' conversões';
-  // Hint de período ao lado do botão de data
   const hint = document.getElementById('dateRangeHint');
   if (hint && d.length) hint.textContent = '(' + rangeStr + ')';
 }
@@ -1166,6 +1194,122 @@ function buildFunnel() {
   });
 }
 
+// ─── DATA FRESHNESS ──────────────────────────────────────────────────────────
+function buildFreshness() {
+  const dot   = document.getElementById('freshDot');
+  const lbl   = document.getElementById('lastUpdated');
+  if (!dot || !lbl) return;
+  if (!ALL_DAYS.length) { dot.className='fresh-dot amber'; lbl.textContent='Sem dados'; return; }
+
+  const lastDateStr = ALL_DAYS[ALL_DAYS.length-1].dateStr;
+  const now         = new Date();
+  const pad         = n => String(n).padStart(2,'0');
+  const todayStr    = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const yesterStr   = (() => { const d=new Date(now); d.setDate(d.getDate()-1);
+                               return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; })();
+
+  let dotClass, msg;
+  if (lastDateStr === todayStr) {
+    dotClass = 'green';
+    msg = 'Dados de hoje · carregado ' + now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  } else if (lastDateStr === yesterStr) {
+    dotClass = 'amber';
+    msg = 'Último dado: ontem (' + fmt2(lastDateStr) + ') · aguardando sync';
+  } else {
+    dotClass = 'red';
+    msg = 'Último dado: ' + fmt2(lastDateStr) + ' · dados desatualizados';
+  }
+  dot.className = 'fresh-dot ' + dotClass;
+  lbl.textContent = msg;
+}
+
+// ─── TODAY PACE ───────────────────────────────────────────────────────────────
+function buildTodayPace() {
+  const wrap  = document.getElementById('todayPace');
+  if (!wrap) return;
+
+  const now     = new Date();
+  const pad     = n => String(n).padStart(2,'0');
+  const todayStr= `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const isToday = filtered.length === 1 && filtered[0].dateStr === todayStr;
+  wrap.style.display = isToday ? 'block' : 'none';
+  if (!isToday) return;
+
+  const today = filtered[0];
+
+  // Média dos últimos 30 dias (excluindo hoje)
+  const past   = ALL_DAYS.filter(d => d.dateStr < todayStr).slice(-30);
+  const avgRev  = past.length ? past.reduce((s,d)=>s+d.revenue,0)/past.length : 0;
+  const avgCost = past.length ? past.reduce((s,d)=>s+(d.costTotal||0),0)/past.length : 0;
+  const avgConv = past.length ? past.reduce((s,d)=>s+d.conv,0)/past.length : 0;
+
+  // Fração do dia decorrida (horário de Brasília aproximado pelo navegador)
+  const hourFrac   = (now.getHours()*60 + now.getMinutes()) / 1440;
+  const expectedRev= avgRev * hourFrac;
+  const paceRatio  = expectedRev > 0 ? today.revenue / expectedRev : null;
+  const paceColor  = paceRatio === null ? 'var(--text-muted)' : paceRatio >= 0.9 ? 'var(--green)' : paceRatio >= 0.7 ? 'var(--amber)' : 'var(--red)';
+  const paceTxt    = paceRatio === null ? '—' : (paceRatio >= 0.9 ? '✓ No ritmo' : paceRatio >= 0.7 ? '⚠ Abaixo do ritmo' : '↓ Bem abaixo');
+
+  // Projeção EOD (end of day)
+  const eodRev  = hourFrac > 0.05 ? +(today.revenue / hourFrac).toFixed(2) : null;
+  const eodCost = hourFrac > 0.05 ? +(( today.costTotal||0) / hourFrac).toFixed(2) : null;
+
+  // Ontem
+  const yestDate = new Date(now); yestDate.setDate(yestDate.getDate()-1);
+  const yestStr  = `${yestDate.getFullYear()}-${pad(yestDate.getMonth()+1)}-${pad(yestDate.getDate())}`;
+  const yest     = ALL_DAYS.find(d => d.dateStr === yestStr);
+
+  const hourStr  = now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const dayPct   = Math.round(hourFrac*100);
+
+  wrap.innerHTML = `
+    <div class="pace-card">
+      <div class="pace-header">
+        <span class="pace-title">⏱ Ritmo do Dia · ${hourStr} (${dayPct}% do dia)</span>
+        <span style="font-size:12px;font-weight:700;color:${paceColor}">${paceTxt}</span>
+      </div>
+      <div class="pace-grid">
+        <div class="pace-stat">
+          <span class="pace-lbl">Receita até agora</span>
+          <span class="pace-val">${fmtR(today.revenue)}</span>
+          <span class="pace-sub">Esperado: ${fmtR(expectedRev)} · ${avgRev>0?Math.round(today.revenue/avgRev*100)+'% da média diária':'—'}</span>
+        </div>
+        <div class="pace-stat">
+          <span class="pace-lbl">Projeção fim do dia</span>
+          <span class="pace-val" style="color:${eodRev&&eodRev>=avgRev*0.9?'var(--green)':'var(--amber)'}">${eodRev?fmtR(eodRev):'—'}</span>
+          <span class="pace-sub">Média diária: ${fmtR(avgRev)}</span>
+        </div>
+        <div class="pace-stat">
+          <span class="pace-lbl">Ontem (dia cheio)</span>
+          <span class="pace-val">${yest?fmtR(yest.revenue):'—'}</span>
+          <span class="pace-sub">${yest?'Lucro: '+fmtR(yest.profit||0):'sem dados'}</span>
+        </div>
+        <div class="pace-stat">
+          <span class="pace-lbl">Custo ads hoje</span>
+          <span class="pace-val">${fmtR(today.cost||0)}</span>
+          <span class="pace-sub">Projeção: ${eodCost?fmtR(eodCost):'—'}</span>
+        </div>
+        <div class="pace-stat">
+          <span class="pace-lbl">CAC do dia</span>
+          <span class="pace-val" style="color:${today.cac&&today.cac<=TARGET_CPA?'var(--green)':today.cac?'var(--red)':'inherit'}">${today.cac?fmtR(today.cac):'—'}</span>
+          <span class="pace-sub">Meta: ${fmtR(TARGET_CPA)}</span>
+        </div>
+        <div class="pace-stat">
+          <span class="pace-lbl">Conversões hoje</span>
+          <span class="pace-val">${fmtN(today.conv,0,'')}</span>
+          <span class="pace-sub">Média diária: ${fmtN(avgConv,1,'')}</span>
+        </div>
+      </div>
+      <div class="pace-bar-wrap">
+        <div class="pace-bar-labels"><span>0%</span><span>Progresso do dia</span><span>100%</span></div>
+        <div class="pace-track">
+          <div class="pace-fill" style="width:${Math.min(100,Math.round(today.revenue/Math.max(avgRev,1)*100))}%;background:${paceColor}"></div>
+          <div class="pace-marker" style="left:${dayPct}%" title="Agora (${dayPct}% do dia)"></div>
+        </div>
+      </div>
+    </div>`;
+}
+
 // ─── DAY OF WEEK ─────────────────────────────────────────────────────────────
 function buildDayOfWeek() {
   const grid = document.getElementById('dowGrid');
@@ -1219,7 +1363,8 @@ function fmt2(s)          { const [,m,d]=s.split('-'); return `${d}/${m}`; }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 async function initDashboard() {
-  document.getElementById('lastUpdated').textContent = 'Carregando dados…';
+  document.getElementById('lastUpdated').textContent = 'Carregando…';
+  document.getElementById('freshDot').className = 'fresh-dot amber';
 
   // Load main CSV
   if (CSV_URL) {
@@ -1276,10 +1421,7 @@ async function initDashboard() {
   const _moEl  = document.getElementById('currentMonthLbl');
   if (_moEl) _moEl.textContent = _moLbl;
 
-  document.getElementById('lastUpdated').textContent =
-    'Atualizado: ' + _now.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-
-  render();
+  render(); // buildFreshness() já é chamado dentro de render()
 }
 
 initDashboard();

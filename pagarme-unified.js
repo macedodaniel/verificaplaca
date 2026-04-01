@@ -116,12 +116,15 @@ function syncAll() {
 
     try { syncUpsellByType(); }
     catch (e) { setLastError_("upsell_by_type: " + String(e)); }
-    // syncDashboard roda no seu próprio trigger (a cada 30min via setupAutoSync)
-    // para não sobrecarregar o trigger horário do syncAll.
   } finally {
     lock.releaseLock();
     _ssCache = null; // limpa cache após execução
   }
+  // syncDashboard é chamado APÓS liberar o lock (ambos usam getScriptLock).
+  // Assim, a cada ciclo horário o Dashboard é consolidado imediatamente
+  // sem depender apenas do trigger de 10min.
+  try { syncDashboard(); }
+  catch (e) { setLastError_("dashboard_pos_sync: " + String(e)); }
 }
 
 /**
@@ -962,12 +965,12 @@ function setupAutoSync() {
       .create();
   });
 
-  // ④ Dashboard (consolida GAds + Pagar.me) — a cada 30 minutos
-  //    Garante que dados do Google Ads report (atualizado pelo add-on) sejam
-  //    incorporados ao CSV do dashboard frequentemente ao longo do dia.
+  // ④ Dashboard (consolida GAds + Pagar.me) — a cada 10 minutos
+  //    Também é chamado ao final de cada syncAll (horário), então na prática
+  //    o CSV nunca fica mais de ~10min desatualizado entre os ciclos.
   ScriptApp.newTrigger("syncDashboard")
     .timeBased()
-    .everyMinutes(30)
+    .everyMinutes(10)
     .create();
 
   SpreadsheetApp.getActiveSpreadsheet()
