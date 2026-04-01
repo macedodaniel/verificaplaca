@@ -248,7 +248,7 @@
 
 <header>
   <a class="logo" href="#">
-    <img src="logotipo-verifica-placa.svg" alt="Verifica Placa" style="height:30px;width:auto;display:block;" />Verifica Placa
+    Dashboard Verifica Placa
   </a>
   <div class="header-controls">
     <select class="filter-select" id="campaignFilter" onchange="applyFilters()">
@@ -423,6 +423,7 @@ const BASE_CAMPS    = [
 const MONTHLY = { revenue:27334.04, cost:20740.63, conv:1898, profit:6237.85, roas:1.39, convRate:4.04 };
 const MONTHLY_BUDGET          = 25000; // R$ orçamento mensal de Google Ads — ajuste conforme seu plano
 const MONTHLY_REVENUE_TARGET  = 30000; // R$ meta de receita mensal — ajuste conforme seu objetivo
+const MONTHLY_PROFIT_TARGET   =  7000; // R$ meta de lucro bruto mensal — ajuste conforme seu objetivo
 
 // ─── GOOGLE SHEETS CSV DATA SOURCE ───────────────────────────────────────────
 // Paste the "Publicar na web → CSV" URL of the Dashboard tab here.
@@ -680,14 +681,27 @@ function buildKPIs(T) {
   const _projRev  = _inCurrMo && filtered.length > 0
     ? Math.round(filtered.reduce((s,x)=>s+x.revenue,0) / filtered.length * _dInMo) : 0;
   const _fmtK     = v => 'R$'+(v/1000).toFixed(1).replace('.',',')+'k';
-  const _revSub   = _projRev > 0
+  const _avgCostTot = _inCurrMo && filtered.length > 0
+    ? filtered.reduce((s,x)=>s+(x.costTotal||0),0)/filtered.length : 0;
+  const _avgProfit  = _inCurrMo && filtered.length > 0
+    ? filtered.reduce((s,x)=>s+(x.profit||0),0)/filtered.length : 0;
+  const _projCost   = _avgCostTot > 0 ? Math.round(_avgCostTot * _dInMo) : 0;
+  const _projProfit = _inCurrMo && filtered.length > 0 ? Math.round(_avgProfit * _dInMo) : 0;
+
+  const _revSub    = _projRev > 0
     ? `Proj.: ${_fmtK(_projRev)}${MONTHLY_REVENUE_TARGET > 0 ? ' · Meta: '+_fmtK(MONTHLY_REVENUE_TARGET) : ''}`
     : 'receita total';
+  const _costSub   = _projCost > 0
+    ? `Proj.: ${_fmtK(_projCost)}${MONTHLY_BUDGET > 0 ? ' · Budget: '+_fmtK(MONTHLY_BUDGET) : ''}`
+    : 'ads + bureau';
+  const _profitSub = _projProfit !== 0
+    ? `Proj.: ${_fmtK(_projProfit)}${MONTHLY_PROFIT_TARGET > 0 ? ' · Meta: '+_fmtK(MONTHLY_PROFIT_TARGET) : ''}`
+    : 'receita − ads − bureau';
 
   const row1 = [
     { id:'r',  label:'Receita Bruta',    value:fmtR(T.rev),              delta:d(T.rev,P?.rev,false),        sub:_revSub,                    color:'blue',                          dir:'up',      badge:'receita',  spark:filtered.map(x=>x.revenue),               sc:'#16a34a' },
-    { id:'ct', label:'Custo Total COGS', value:fmtR(T.costTotal),        delta:d(T.costTotal,P?.costTotal,true), sub:'ads + bureau',           color:'red',                           dir:'neutral', badge:'custos',   spark:filtered.map(x=>x.costTotal||0),           sc:'#dc2626' },
-    { id:'p',  label:'Lucro Bruto',      value:fmtR(T.pft),              delta:d(T.pft,P?.pft,false),        sub:'receita − ads − bureau',   color:T.pft>=0?'green':'red',          dir:T.pft>=0?'up':'down', badge:T.pft>=0?'positivo':'negativo', spark:filtered.map(x=>x.profit||0), sc:T.pft>=0?'#16a34a':'#dc2626' },
+    { id:'ct', label:'Custo Total COGS', value:fmtR(T.costTotal),        delta:d(T.costTotal,P?.costTotal,true), sub:_costSub,                 color:'red',                           dir:'neutral', badge:'custos',   spark:filtered.map(x=>x.costTotal||0),           sc:'#dc2626' },
+    { id:'p',  label:'Lucro Bruto',      value:fmtR(T.pft),              delta:d(T.pft,P?.pft,false),        sub:_profitSub,                 color:T.pft>=0?'green':'red',          dir:T.pft>=0?'up':'down', badge:T.pft>=0?'positivo':'negativo', spark:filtered.map(x=>x.profit||0), sc:T.pft>=0?'#16a34a':'#dc2626' },
     { id:'m',  label:'Margem',           value:fmtN(T.margin*100,1)+'%', delta:d(T.margin,P?.margin,false),  sub:'contribuição real',         color:T.margin>=.22?'green':'amber',   dir:T.margin>=.22?'up':'neutral', badge:T.margin>=.22?'saudável':'atenção', spark:filtered.map(x=>x.revenue>0?((x.profit||0)/x.revenue)*100:0), sc:'#16a34a' },
     { id:'ro', label:'ROAS',             value:fmtN(T.roas,2,'')+'×',    delta:d(T.roas,P?.roas,false),      sub:'retorno s/ investimento',  color:T.roas>=1?'green':T.roas>=.8?'amber':'red', dir:T.roas>=1?'up':'down', badge:T.roas>=1.5?'bom':T.roas>=1?'aceitável':'crítico', spark:filtered.map(x=>x.costTotal>0?x.revenue/x.costTotal:0), sc:'#2563eb', alert:T.roas<1 },
     { id:'ca', label:'CAC',              value:T.cac>0?fmtR(T.cac):'—',  delta:d(T.cac,P?.cac,true),        sub:'meta: '+fmtR(TARGET_CPA),  color:T.cac>0&&T.cac<=TARGET_CPA?'green':T.cac>0?'red':'blue', dir:T.cac>0&&T.cac<=TARGET_CPA?'up':T.cac>0?'down':'neutral', badge:T.cac>0&&T.cac<=TARGET_CPA?'dentro da meta':T.cac>0?'acima da meta':'s/ ads', spark:filtered.map(x=>x.cac), sc:T.cac>0&&T.cac<=TARGET_CPA?'#16a34a':'#dc2626', alert:T.cac>TARGET_CPA*1.15 },
