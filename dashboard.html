@@ -533,7 +533,7 @@ function buildKPIs(T) {
   const row1 = [
     // Row 1: What did the business earn?
     { id:'r', label:'Receita Bruta',       value:fmtR(T.rev),            sub:'receita total',       color:'blue',   dir:'up',      badge:'receita', spark:filtered.map(d=>d.revenue),  sc:'#16a34a' },
-    { id:'ct',label:'Custo Total',         value:fmtR(T.costTotal),      sub:'ads + bureau',        color:'red',    dir:'neutral', badge:'custos',  spark:filtered.map(d=>d.costTotal||0), sc:'#dc2626' },
+    { id:'ct',label:'Custo Total COGS',         value:fmtR(T.costTotal),      sub:'ads + bureau',        color:'red',    dir:'neutral', badge:'custos',  spark:filtered.map(d=>d.costTotal||0), sc:'#dc2626' },
     { id:'p', label:'Lucro Bruto',         value:fmtR(T.pft),            sub:'receita − ads − bureau', color:T.pft>=0?'green':'red', dir:T.pft>=0?'up':'down', badge:T.pft>=0?'positivo':'negativo', spark:filtered.map(d=>d.profit||0), sc:T.pft>=0?'#16a34a':'#dc2626' },
     { id:'m', label:'Margem',              value:fmtN(T.margin*100,1)+'%', sub:'contribuição real',  color:T.margin>=.22?'green':'amber', dir:T.margin>=.22?'up':'neutral', badge:T.margin>=.22?'saudável':'atenção', spark:filtered.map(d=>d.revenue>0?((d.profit||0)/d.revenue)*100:0), sc:'#16a34a' },
     { id:'ro',label:'ROAS',                value:fmtN(T.roas,2,'')+'×',  sub:'retorno s/ investimento', color:T.roas>=1.5?'green':'amber', dir:T.roas>=1.5?'up':'neutral', badge:T.roas>=1.5?'bom':'atenção', spark:filtered.map(d=>d.costTotal>0?d.revenue/d.costTotal:0), sc:'#2563eb' },
