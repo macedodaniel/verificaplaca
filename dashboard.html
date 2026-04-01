@@ -1479,7 +1479,7 @@ function buildTodayPace() {
       <div class="pace-grid">
         <div class="pace-stat has-tip" data-tip="Receita acumulada desde meia-noite até agora.\nComparado à média dos últimos 30 dias neste mesmo horário.">
           <span class="pace-lbl">Receita até agora</span>
-          <span class="pace-val">${fmtR(today.revenue)}</span>
+          <span class="pace-val" style="color:var(--green)">${fmtR(today.revenue)}</span>
           <span class="pace-sub">${revPctOfAvg}% da média diária · esp. ${fmtR(expectedRev)}</span>
         </div>
         <div class="pace-stat has-tip" data-tip="Estimativa extrapolando o ritmo atual\naté o fim do dia (receita ÷ % do dia decorrido).">
@@ -1492,9 +1492,9 @@ function buildTodayPace() {
           <span class="pace-val">${yest?fmtR(yest.revenue):'—'}</span>
           <span class="pace-sub">${yest?'Lucro: '+fmtR(yest.profit||0):'sem dados'}</span>
         </div>
-        <div class="pace-stat has-tip" data-tip="Investimento em Google Ads hoje.\nProjeção = custo atual ÷ % do dia decorrido.">
-          <span class="pace-lbl">Custo Ads hoje</span>
-          <span class="pace-val">${fmtR(today.cost||0)}</span>
+        <div class="pace-stat has-tip" data-tip="Custo total (Ads + Bureau) acumulado hoje.\nProjeção = custo atual ÷ % do dia decorrido.">
+          <span class="pace-lbl">Custo COGS até agora</span>
+          <span class="pace-val" style="color:var(--red)">${fmtR(today.costTotal||today.cost||0)}</span>
           <span class="pace-sub">Proj.: ${eodCost?fmtR(eodCost):'—'}</span>
         </div>
         <div class="pace-stat has-tip" data-tip="Custo de Aquisição por Cliente hoje.\nFórmula: Custo Total ÷ Conversões do dia.">
