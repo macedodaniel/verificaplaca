@@ -100,6 +100,27 @@
     .kpi-accent.red   { background: var(--red); }
     .kpi-accent.amber { background: var(--amber); }
     .kpi-accent.purple{ background: #7c3aed; }
+    /* KPI delta vs período anterior */
+    .kpi-delta { font-size: 10.5px; font-weight: 600; margin-top: 2px; display: block; min-height: 14px; }
+    .kpi-delta.pos { color: var(--green); }
+    .kpi-delta.neg { color: var(--red); }
+    .kpi-delta.neu { color: var(--text-muted); }
+    .kpi-card.alert-pulse { border-color: #fca5a5 !important; box-shadow: 0 0 0 2px rgba(220,38,38,.12) !important; }
+    /* Day-of-week grid */
+    .dow-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+    @media (max-width: 700px) { .dow-grid { grid-template-columns: repeat(4, 1fr); } }
+    .dow-cell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+                padding: 12px 8px; text-align: center; box-shadow: var(--shadow); }
+    .dow-day  { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;
+                letter-spacing: .05em; margin-bottom: 6px; }
+    .dow-val  { font-size: 14.5px; font-weight: 700; }
+    .dow-sub  { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
+    .dow-badge { display: inline-block; font-size: 9.5px; font-weight: 700; border-radius: 3px;
+                 padding: 1px 5px; margin-top: 5px; }
+    .dow-best  { background: var(--green-soft); border-color: #86efac; }
+    .dow-worst { background: var(--red-soft);   border-color: #fca5a5; }
+    .dow-badge.best  { background: #dcfce7; color: #15803d; }
+    .dow-badge.worst { background: #fee2e2; color: #b91c1c; }
 
     /* Alert */
     .alert-bar { display: flex; align-items: center; gap: 10px; background: var(--amber-soft);
@@ -124,8 +145,9 @@
     @media (max-width: 900px) { .grid-2-1, .grid-1-1 { grid-template-columns: 1fr; } }
 
     /* Gauges */
-    .gauge-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    @media (max-width: 700px) { .gauge-row { grid-template-columns: 1fr; } }
+    .gauge-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    @media (max-width: 1000px) { .gauge-row { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px)  { .gauge-row { grid-template-columns: 1fr; } }
     .gauge-card { background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
     .gauge-lbl { font-size: 11.5px; color: var(--text-secondary); font-weight: 500; margin-bottom: 8px; }
@@ -275,6 +297,7 @@
           <th>Campanha</th>
           <th class="num">Conv.</th>
           <th class="num">Investimento</th>
+          <th class="num">% Gasto</th>
           <th class="num">Receita</th>
           <th class="num">Lucro</th>
           <th class="num">ROAS</th>
@@ -285,6 +308,10 @@
     </div>
   </div>
 
+  <!-- Day of week -->
+  <div class="section-label" style="margin-top:24px">Performance por Dia da Semana</div>
+  <div class="dow-grid" id="dowGrid"></div>
+
   <!-- Upsell type table -->
   <div class="section-label" style="margin-top:24px">Upsell por Tipo · Período Selecionado</div>
   <div class="card">
@@ -293,6 +320,7 @@
         <thead><tr>
           <th>Tipo de Upsell</th>
           <th class="num">Pedidos</th>
+          <th class="num">Tendência</th>
           <th class="num">% do Total</th>
           <th class="num">Receita</th>
         </tr></thead>
@@ -320,6 +348,7 @@ const BASE_CAMPS    = [
   { name:'MULTAS',      convShare:.087, costShare:.122 },
 ];
 const MONTHLY = { revenue:27334.04, cost:20740.63, conv:1898, profit:6237.85, roas:1.39, convRate:4.04 };
+const MONTHLY_BUDGET = 25000; // R$ orçamento mensal de Google Ads — ajuste conforme seu plano
 
 // ─── GOOGLE SHEETS CSV DATA SOURCE ───────────────────────────────────────────
 // Paste the "Publicar na web → CSV" URL of the Dashboard tab here.
@@ -512,6 +541,36 @@ function campTotals() {
     .sort((a,b)=>b.conv-a.conv);
 }
 
+// ─── PERÍODO ANTERIOR ─────────────────────────────────────────────────────────
+function prevTotals() {
+  if (!filtered.length || ALL_DAYS.length === 0) return null;
+  const n = filtered.length;
+  const minDate = filtered[0].dateStr;
+  const prev = ALL_DAYS.filter(d => d.dateStr < minDate).slice(-n);
+  if (!prev.length) return null;
+  const cf = activeCamp ? (BASE_CAMPS.find(c=>c.name===activeCamp)?.costShare||1) : 1;
+  const costMul = activeCamp?cf:1, revMul=activeCamp?cf*1.4:1, convMul=activeCamp?cf*1.1:1;
+  const rev     = prev.reduce((s,d)=>s+d.revenue,         0)*revMul;
+  const cost    = prev.reduce((s,d)=>s+d.cost,            0)*costMul;
+  const costBur = prev.reduce((s,d)=>s+(d.costBureau||0), 0)*costMul;
+  const costTot = +(cost+costBur).toFixed(2);
+  const pft     = usingRealData ? prev.reduce((s,d)=>s+(d.profit||0),0)*revMul : +(rev-costTot).toFixed(2);
+  const conv    = prev.reduce((s,d)=>s+d.conv,            0)*convMul;
+  const checks  = prev.reduce((s,d)=>s+(d.checkouts||0),  0)*convMul;
+  const upsell  = prev.reduce((s,d)=>s+d.upsellRate,      0)/(prev.length||1);
+  const convRate= checks>0?(conv/checks*100):0;
+  const cac     = conv>0&&costTot>0?+(costTot/conv).toFixed(2):0;
+  const roas    = costTot>0?+(rev/costTot).toFixed(2):0;
+  const margin  = rev>0?pft/rev:0;
+  return { rev, cost, costBureau:costBur, costTotal:costTot, pft, conv, upsell, cac, roas, margin, convRate };
+}
+function pctDelta(curr, prev, reverse) {
+  if (prev==null || Math.abs(prev)<0.01) return null;
+  const pct = ((curr-prev)/Math.abs(prev))*100;
+  const cls = reverse ? (pct<-2?'pos':pct>2?'neg':'neu') : (pct>2?'pos':pct<-2?'neg':'neu');
+  return { txt: (pct>=0?'↑':('↓'))+(Math.abs(pct).toFixed(1))+'% vs ant.', cls };
+}
+
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 function render() {
   const T = totals();
@@ -520,6 +579,7 @@ function render() {
   buildAlertBar(T);
   buildCharts(T);
   buildTable();
+  buildDayOfWeek();
   buildUpsellTypeTable();
   const d = filtered;
   document.getElementById('chartSub').textContent =
@@ -528,25 +588,24 @@ function render() {
 }
 
 // ─── KPI CARDS ────────────────────────────────────────────────────────────────
-// CEO order: Financial outcomes first, then operational drivers
 function buildKPIs(T) {
+  const P = prevTotals();
+  const d = (curr, prev, rev) => P ? pctDelta(curr, prev, rev) : null;
   const row1 = [
-    // Row 1: What did the business earn?
-    { id:'r', label:'Receita Bruta',       value:fmtR(T.rev),            sub:'receita total',       color:'blue',   dir:'up',      badge:'receita', spark:filtered.map(d=>d.revenue),  sc:'#16a34a' },
-    { id:'ct',label:'Custo Total COGS',         value:fmtR(T.costTotal),      sub:'ads + bureau',        color:'red',    dir:'neutral', badge:'custos',  spark:filtered.map(d=>d.costTotal||0), sc:'#dc2626' },
-    { id:'p', label:'Lucro Bruto',         value:fmtR(T.pft),            sub:'receita − ads − bureau', color:T.pft>=0?'green':'red', dir:T.pft>=0?'up':'down', badge:T.pft>=0?'positivo':'negativo', spark:filtered.map(d=>d.profit||0), sc:T.pft>=0?'#16a34a':'#dc2626' },
-    { id:'m', label:'Margem',              value:fmtN(T.margin*100,1)+'%', sub:'contribuição real',  color:T.margin>=.22?'green':'amber', dir:T.margin>=.22?'up':'neutral', badge:T.margin>=.22?'saudável':'atenção', spark:filtered.map(d=>d.revenue>0?((d.profit||0)/d.revenue)*100:0), sc:'#16a34a' },
-    { id:'ro',label:'ROAS',                value:fmtN(T.roas,2,'')+'×',  sub:'retorno s/ investimento', color:T.roas>=1.5?'green':'amber', dir:T.roas>=1.5?'up':'neutral', badge:T.roas>=1.5?'bom':'atenção', spark:filtered.map(d=>d.costTotal>0?d.revenue/d.costTotal:0), sc:'#2563eb' },
-    { id:'ca',label:'CAC',                 value:T.cac>0?fmtR(T.cac):'—', sub:'meta: '+fmtR(TARGET_CPA), color:T.cac>0&&T.cac<=TARGET_CPA?'green':T.cac>0?'red':'blue', dir:T.cac>0&&T.cac<=TARGET_CPA?'up':T.cac>0?'down':'neutral', badge:T.cac>0&&T.cac<=TARGET_CPA?'dentro da meta':T.cac>0?'acima da meta':'s/ ads', spark:filtered.map(d=>d.cac), sc:T.cac>0&&T.cac<=TARGET_CPA?'#16a34a':'#dc2626' },
+    { id:'r',  label:'Receita Bruta',    value:fmtR(T.rev),              delta:d(T.rev,P?.rev,false),        sub:'receita total',            color:'blue',                          dir:'up',      badge:'receita',  spark:filtered.map(x=>x.revenue),               sc:'#16a34a' },
+    { id:'ct', label:'Custo Total COGS', value:fmtR(T.costTotal),        delta:d(T.costTotal,P?.costTotal,true), sub:'ads + bureau',           color:'red',                           dir:'neutral', badge:'custos',   spark:filtered.map(x=>x.costTotal||0),           sc:'#dc2626' },
+    { id:'p',  label:'Lucro Bruto',      value:fmtR(T.pft),              delta:d(T.pft,P?.pft,false),        sub:'receita − ads − bureau',   color:T.pft>=0?'green':'red',          dir:T.pft>=0?'up':'down', badge:T.pft>=0?'positivo':'negativo', spark:filtered.map(x=>x.profit||0), sc:T.pft>=0?'#16a34a':'#dc2626' },
+    { id:'m',  label:'Margem',           value:fmtN(T.margin*100,1)+'%', delta:d(T.margin,P?.margin,false),  sub:'contribuição real',         color:T.margin>=.22?'green':'amber',   dir:T.margin>=.22?'up':'neutral', badge:T.margin>=.22?'saudável':'atenção', spark:filtered.map(x=>x.revenue>0?((x.profit||0)/x.revenue)*100:0), sc:'#16a34a' },
+    { id:'ro', label:'ROAS',             value:fmtN(T.roas,2,'')+'×',    delta:d(T.roas,P?.roas,false),      sub:'retorno s/ investimento',  color:T.roas>=1?'green':T.roas>=.8?'amber':'red', dir:T.roas>=1?'up':'down', badge:T.roas>=1.5?'bom':T.roas>=1?'aceitável':'crítico', spark:filtered.map(x=>x.costTotal>0?x.revenue/x.costTotal:0), sc:'#2563eb', alert:T.roas<1 },
+    { id:'ca', label:'CAC',              value:T.cac>0?fmtR(T.cac):'—',  delta:d(T.cac,P?.cac,true),        sub:'meta: '+fmtR(TARGET_CPA),  color:T.cac>0&&T.cac<=TARGET_CPA?'green':T.cac>0?'red':'blue', dir:T.cac>0&&T.cac<=TARGET_CPA?'up':T.cac>0?'down':'neutral', badge:T.cac>0&&T.cac<=TARGET_CPA?'dentro da meta':T.cac>0?'acima da meta':'s/ ads', spark:filtered.map(x=>x.cac), sc:T.cac>0&&T.cac<=TARGET_CPA?'#16a34a':'#dc2626', alert:T.cac>TARGET_CPA*1.15 },
   ];
   const row2 = [
-    // Row 2: Cost breakdown + operational drivers (below Receita Bruta / Custo Total)
-    { id:'ga',label:'Gasto Google Ads',    value:fmtR(T.cost),           sub:'custo_ads',            color:'amber',  dir:'neutral', badge:'ads',    spark:filtered.map(d=>d.cost||0),          sc:'#f59e0b' },
-    { id:'gb',label:'Gasto Bureau',        value:fmtR(T.costBureau),     sub:'custo_bureau',         color:'amber',  dir:'neutral', badge:'bureau', spark:filtered.map(d=>d.costBureau||0),    sc:'#d97706' },
-    { id:'tr',label:'Transações',          value:fmtN(T.conv,0,''),      sub:'conversões',           color:'blue',   dir:'up',      badge:'+12%',   spark:filtered.map(d=>d.conv),             sc:'#2563eb' },
-    { id:'tk',label:'Ticket Médio',        value:fmtR(T.ticket),         sub:'por compra',           color:'blue',   dir:'neutral', badge:'estável',spark:filtered.map(()=>T.ticket),          sc:'#0891b2' },
-    { id:'up',label:'Taxa de Upsell',      value:fmtN(T.upsell,1)+'%',  sub:'meta: '+TARGET_UPSELL+'%', color:T.upsell>=TARGET_UPSELL?'green':'amber', dir:T.upsell>=TARGET_UPSELL?'up':'neutral', badge:T.upsell>=TARGET_UPSELL?'meta atingida':fmtN(TARGET_UPSELL-T.upsell,1)+'pp abaixo', spark:filtered.map(d=>d.upsellRate), sc:'#7c3aed' },
-    { id:'cv',label:'Taxa de Conversão',   value:fmtN(T.convRate,2)+'%', sub:'checkout → compra',   color:'blue',   dir:'up',      badge:'+2pp',   spark:filtered.map(()=>T.convRate),        sc:'#0891b2' },
+    { id:'ga', label:'Gasto Google Ads', value:fmtR(T.cost),           delta:d(T.cost,P?.cost,true),       sub:'custo_ads',               color:'amber', dir:'neutral', badge:'ads',    spark:filtered.map(x=>x.cost||0),        sc:'#f59e0b' },
+    { id:'gb', label:'Gasto Bureau',     value:fmtR(T.costBureau),     delta:d(T.costBureau,P?.costBureau,true), sub:'custo_bureau',      color:'amber', dir:'neutral', badge:'bureau', spark:filtered.map(x=>x.costBureau||0),  sc:'#d97706' },
+    { id:'tr', label:'Transações',       value:fmtN(T.conv,0,''),      delta:d(T.conv,P?.conv,false),      sub:'conversões',             color:'blue',  dir:'up',      badge:'pedidos', spark:filtered.map(x=>x.conv),           sc:'#2563eb' },
+    { id:'tk', label:'Ticket Médio',     value:fmtR(T.ticket),         delta:null,                         sub:'por compra',             color:'blue',  dir:'neutral', badge:'estável', spark:filtered.map(()=>T.ticket),        sc:'#0891b2' },
+    { id:'up', label:'Taxa de Upsell',   value:fmtN(T.upsell,1)+'%',  delta:d(T.upsell,P?.upsell,false),  sub:'meta: '+TARGET_UPSELL+'%', color:T.upsell>=TARGET_UPSELL?'green':'amber', dir:T.upsell>=TARGET_UPSELL?'up':'neutral', badge:T.upsell>=TARGET_UPSELL?'meta atingida':fmtN(TARGET_UPSELL-T.upsell,1)+'pp abaixo', spark:filtered.map(x=>x.upsellRate), sc:'#7c3aed' },
+    { id:'cv', label:'Taxa de Conversão',value:fmtN(T.convRate,2)+'%', delta:d(T.convRate,P?.convRate,false), sub:'checkout → compra',   color:'blue',  dir:'up',      badge:'+2pp',   spark:filtered.map(()=>T.convRate),      sc:'#0891b2' },
   ];
   renderRow('kpiRow1', row1);
   renderRow('kpiRow2', row2);
@@ -565,6 +624,7 @@ function renderRow(rowId, defs) {
           <span class="badge ${k.dir}" id="kb_${k.id}"></span>
         </div>
         <div class="kpi-value" id="kv_${k.id}"></div>
+        <div id="kd_${k.id}" class="kpi-delta"></div>
         <div class="kpi-spark-wrap"><canvas id="ks_${k.id}"></canvas></div>
         <div class="kpi-sub" id="ksub_${k.id}"></div>
         <div class="kpi-accent ${k.color}" id="ka_${k.id}"></div>`;
@@ -578,6 +638,15 @@ function renderRow(rowId, defs) {
     b.textContent = (k.dir==='up'?'↑':k.dir==='down'?'↓':'→')+' '+k.badge;
     b.className   = 'badge '+k.dir;
     document.getElementById('ka_'+k.id).className = 'kpi-accent '+k.color;
+    // Delta vs previous period
+    const deltaEl = document.getElementById('kd_'+k.id);
+    if (deltaEl) {
+      if (k.delta) { deltaEl.textContent = k.delta.txt; deltaEl.className = 'kpi-delta '+k.delta.cls; }
+      else         { deltaEl.textContent = '';           deltaEl.className = 'kpi-delta'; }
+    }
+    // Alert pulse border
+    const card = document.getElementById('kc_'+k.id);
+    if (card) card.classList.toggle('alert-pulse', !!k.alert);
     drawSpark('ks_'+k.id, k.spark, k.sc);
   });
 }
@@ -599,6 +668,18 @@ function drawSpark(id, data, color) {
 
 // ─── GAUGES ───────────────────────────────────────────────────────────────────
 function buildGauges(T) {
+  // Budget pacing: estimate monthly spend from current period
+  const now = new Date();
+  const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  // Sum all days in current month from ALL_DAYS
+  const moStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const moSpent = ALL_DAYS.filter(d => d.dateStr >= moStart).reduce((s,d) => s+(d.cost||0), 0);
+  const pacingBudget = MONTHLY_BUDGET > 0 ? MONTHLY_BUDGET : 1;
+  const budgetPct = Math.min(100, (moSpent / pacingBudget) * 100);
+  const idealPct  = Math.min(100, (dayOfMonth / daysInMonth) * 100);
+  const budgetColor = budgetPct > idealPct + 10 ? '#dc2626' : budgetPct < idealPct - 15 ? '#d97706' : '#16a34a';
+
   const gs = [
     { label:'Eficiência de CAC', val:fmtR(T.cac), pct:Math.min(100,(TARGET_CPA/Math.max(T.cac,.01))*100),
       color:T.cac<=TARGET_CPA?'#16a34a':T.cac<=TARGET_CPA*1.2?'#d97706':'#dc2626',
@@ -607,6 +688,9 @@ function buildGauges(T) {
       color:T.margin>=.22?'#16a34a':'#d97706', sub:`Meta: 30% · Atual: ${fmtN(T.margin*100,1)}%` },
     { label:'Taxa de Upsell', val:fmtN(T.upsell,1)+'%', pct:Math.min(100,(T.upsell/TARGET_UPSELL)*100),
       color:T.upsell>=TARGET_UPSELL?'#16a34a':'#7c3aed', sub:`Meta: ${TARGET_UPSELL}% · ${T.upsell>=TARGET_UPSELL?'✓ Atingido':'⚠ Abaixo'}` },
+    { label:'Pacing do Orçamento', val:fmtR(moSpent), pct: budgetPct,
+      color: budgetColor,
+      sub:`Orçamento: ${fmtR(pacingBudget)} · Ideal: ${idealPct.toFixed(0)}% · Realizado: ${budgetPct.toFixed(0)}%` },
   ];
   const row = document.getElementById('gaugeRow');
   if (row.children.length !== gs.length) {
@@ -632,10 +716,14 @@ function buildGauges(T) {
 // ─── ALERT ────────────────────────────────────────────────────────────────────
 function buildAlertBar(T) {
   const bar = document.getElementById('alertBar');
-  if (T.cac > TARGET_CPA*1.15) {
+  const msgs = [];
+  if (T.cac > TARGET_CPA*1.15)
+    msgs.push(`<strong>CAC alto:</strong> ${fmtR(T.cac)} — ${fmtN((T.cac/TARGET_CPA-1)*100,0)}% acima da meta de ${fmtR(TARGET_CPA)}`);
+  if (T.roas < 1)
+    msgs.push(`<strong>ROAS crítico:</strong> ${fmtN(T.roas,2,'')}× — cada R$1 investido retorna menos de R$1`);
+  if (msgs.length) {
     bar.style.display = 'flex';
-    document.getElementById('alertText').innerHTML =
-      `<strong>Atenção:</strong> CAC atual (${fmtR(T.cac)}) está ${fmtN((T.cac/TARGET_CPA-1)*100,0)}% acima da meta de ${fmtR(TARGET_CPA)}.`;
+    document.getElementById('alertText').innerHTML = msgs.join(' &nbsp;·&nbsp; ');
   } else { bar.style.display = 'none'; }
 }
 
@@ -648,15 +736,48 @@ function buildCharts(T) {
   const labels = d.map(lbl);
 
   // 1. Revenue vs Cost — line, tooltips only (30 points too dense for labels)
-  const _revN       = d.length;
-  const _revStep    = _revN <= 7 ? 1 : _revN <= 14 ? 2 : _revN <= 21 ? 3 : _revN <= 31 ? 4 : 5;
-  const _revLblSize = _revN > 21 ? 7.5 : _revN > 14 ? 8.5 : _revN > 7 ? 9 : 10;
-  const _revShowLbl = ctx => ctx.dataIndex % _revStep === 0 || ctx.dataIndex === _revN - 1;
+  // Build projection for current month: extend chart with dashed estimate to month-end
+  const _today = new Date();
+  const _todayStr = `${_today.getFullYear()}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`;
+  const _moStart  = _todayStr.slice(0,7)+'-01';
+  const _inCurrMo = d.length >= 3 && d[0].dateStr >= _moStart && d[d.length-1].dateStr <= _todayStr;
+  let _projLabels = [], _projRevData = [], _projCostData = [];
+  if (_inCurrMo) {
+    const _daysInMo  = new Date(_today.getFullYear(), _today.getMonth()+1, 0).getDate();
+    const _avgRev    = d.reduce((s,x)=>s+x.revenue,    0) / d.length;
+    const _avgCost   = d.reduce((s,x)=>s+(x.costTotal||0), 0) / d.length;
+    const _mo        = _today.getMonth()+1;
+    for (let day = _today.getDate()+1; day <= _daysInMo; day++) {
+      _projLabels.push(`${day}/${_mo}`);
+      _projRevData.push(_avgRev);
+      _projCostData.push(_avgCost);
+    }
+  }
+  const _allLabels   = [...labels, ..._projLabels];
+  const _revPad      = _projLabels.map(()=>null);
+  const _costPad     = _projLabels.map(()=>null);
+  const _projRevFull = [...d.map(()=>null), ..._projRevData];  // null for past, values for future
+  const _projCostFull= [...d.map(()=>null), ..._projCostData];
+  if (_inCurrMo && d.length > 0) {
+    // Connect projection to last real data point
+    _projRevFull [d.length-1] = d[d.length-1].revenue;
+    _projCostFull[d.length-1] = d[d.length-1].costTotal||0;
+  }
+
+  const _revN       = _allLabels.length;
+  const _origN      = d.length;
+  const _revStep    = _origN <= 7 ? 1 : _origN <= 14 ? 2 : _origN <= 21 ? 3 : _origN <= 31 ? 4 : 5;
+  const _revLblSize = _origN > 21 ? 7.5 : _origN > 14 ? 8.5 : _origN > 7 ? 9 : 10;
+  const _revShowLbl = ctx => ctx.datasetIndex < 2 && (ctx.dataIndex % _revStep === 0 || ctx.dataIndex === _origN - 1) && ctx.dataIndex < _origN;
   mkChart('revenueChart','line', {
-    labels,
+    labels: _allLabels,
     datasets:[
-      { label:'Receita Bruta', data:d.map(x=>x.revenue),      borderColor:'#16a34a', backgroundColor:'rgba(22,163,74,.06)', fill:true, tension:.3, pointRadius:d.length>20?2:3, pointHoverRadius:5, pointBackgroundColor:'#16a34a', borderWidth:2 },
-      { label:'Investimento',  data:d.map(x=>x.costTotal||0), borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.06)', fill:true, tension:.3, pointRadius:d.length>20?2:3, pointHoverRadius:5, pointBackgroundColor:'#2563eb', borderWidth:2 },
+      { label:'Receita Bruta', data:[...d.map(x=>x.revenue),      ..._revPad],  borderColor:'#16a34a', backgroundColor:'rgba(22,163,74,.06)', fill:true, tension:.3, pointRadius:d.length>20?2:3, pointHoverRadius:5, pointBackgroundColor:'#16a34a', borderWidth:2 },
+      { label:'Investimento',  data:[...d.map(x=>x.costTotal||0), ..._costPad], borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.06)', fill:true, tension:.3, pointRadius:d.length>20?2:3, pointHoverRadius:5, pointBackgroundColor:'#2563eb', borderWidth:2 },
+      ...(_inCurrMo && _projLabels.length ? [
+        { label:'Projeção Receita',      data:_projRevFull,  borderColor:'rgba(22,163,74,.40)', borderDash:[5,4], borderWidth:1.5, pointRadius:0, fill:false, tension:0 },
+        { label:'Projeção Investimento', data:_projCostFull, borderColor:'rgba(37,99,235,.40)', borderDash:[5,4], borderWidth:1.5, pointRadius:0, fill:false, tension:0 },
+      ] : []),
     ]
   },{
     responsive:true, maintainAspectRatio:false,
@@ -801,17 +922,20 @@ function mkChart(id, type, data, options) {
 // ─── TABLE ────────────────────────────────────────────────────────────────────
 function buildTable() {
   const camps = campTotals();
-  const maxCac = Math.max(...camps.map(c=>c.cac));
+  const maxCac  = Math.max(...camps.map(c=>c.cac));
+  const totalCostAllCamps = camps.reduce((s,c)=>s+c.cost, 0);
   const tbody = document.querySelector('#campaignTable tbody');
   tbody.innerHTML = '';
   camps.forEach(c => {
-    const pct = Math.round((c.cac/maxCac)*100);
-    const col = c.cac<=TARGET_CPA?'#16a34a':c.cac<=TARGET_CPA*1.2?'#d97706':'#dc2626';
+    const pct     = Math.round((c.cac/maxCac)*100);
+    const col     = c.cac<=TARGET_CPA?'#16a34a':c.cac<=TARGET_CPA*1.2?'#d97706':'#dc2626';
+    const spendPct = totalCostAllCamps > 0 ? fmtN((c.cost/totalCostAllCamps)*100,1)+'%' : '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><span class="cname"><span class="dot" style="background:${c.color}"></span>${c.name}</span></td>
       <td class="num">${fmtN(c.conv,1,'')}</td>
       <td class="num">${fmtR(c.cost)}</td>
+      <td class="num" style="color:var(--text-secondary);font-weight:600">${spendPct}</td>
       <td class="num">${fmtR(c.rev)}</td>
       <td class="num" style="color:${c.pft>0?'var(--green)':'var(--red)'}">${fmtR(c.pft)}</td>
       <td class="num">${fmtN(c.roas,2,'')}×</td>
@@ -844,11 +968,29 @@ function buildUpsellTypeTable() {
     e.revenue += row.revenue;
   }
 
+  // Trend: compare 1st half vs 2nd half of the filtered period
+  const midDate = dates[Math.floor(dates.length / 2)];
+  const agg1 = new Map(), agg2 = new Map(); // first/second half counts
+  for (const row of UPSELL_TYPE_DATA) {
+    if (row.dateStr < minDate || row.dateStr > maxDate) continue;
+    const map = row.dateStr < midDate ? agg1 : agg2;
+    const prev = map.get(row.addonKey) || 0;
+    map.set(row.addonKey, prev + row.count);
+  }
+  const trendIcon = key => {
+    const c1 = agg1.get(key) || 0, c2 = agg2.get(key) || 0;
+    if (c1 + c2 < 2) return { icon:'→', color:'var(--text-muted)' };
+    const delta = c1 > 0 ? (c2 - c1) / c1 * 100 : 0;
+    if (delta > 8)  return { icon:'↑', color:'var(--green)' };
+    if (delta < -8) return { icon:'↓', color:'var(--red)' };
+    return { icon:'→', color:'var(--text-muted)' };
+  };
+
   if (!agg.size) {
     // Fallback: use existing aggregated upsell data from filtered days
     const totalUpsell = filtered.reduce((s, d) => s + (d.pedidosUpsell || 0), 0);
     if (!totalUpsell) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;font-size:12.5px">Configure UPSELL_TYPE_URL para ver breakdown por tipo</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px;font-size:12.5px">Configure UPSELL_TYPE_URL para ver breakdown por tipo</td></tr>';
       return;
     }
     // Show single "Upsell" row with totals from main CSV
@@ -857,6 +999,7 @@ function buildUpsellTypeTable() {
     tbody.innerHTML = `<tr>
       <td style="font-weight:500">Upsell (todos os tipos)</td>
       <td class="num">${totalUpsell}</td>
+      <td class="num" style="color:var(--text-muted)">→</td>
       <td class="num">${totalOrders ? ((totalUpsell/totalOrders)*100).toFixed(1)+'%' : '—'}</td>
       <td class="num">${totalRevUpsell ? fmtR(totalRevUpsell) : '—'}</td>
     </tr>`;
@@ -870,10 +1013,12 @@ function buildUpsellTypeTable() {
 
   rows.forEach(r => {
     const pct = totalCount ? ((r.count / totalCount) * 100).toFixed(1) : '0.0';
-    const tr = document.createElement('tr');
+    const t   = trendIcon(r.key);
+    const tr  = document.createElement('tr');
     tr.innerHTML = `
       <td style="font-weight:500">${r.label}</td>
       <td class="num">${r.count}</td>
+      <td class="num" style="color:${t.color};font-size:14px;font-weight:700">${t.icon}</td>
       <td class="num" style="color:#7c3aed;font-weight:600">${pct}%</td>
       <td class="num">${fmtR(r.revenue)}</td>`;
     tbody.appendChild(tr);
@@ -883,8 +1028,54 @@ function buildUpsellTypeTable() {
   const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
   const tfoot = document.createElement('tr');
   tfoot.className = 'tr-total';
-  tfoot.innerHTML = `<td>Total</td><td class="num">${totalCount}</td><td class="num">100%</td><td class="num">${fmtR(totalRevenue)}</td>`;
+  tfoot.innerHTML = `<td>Total</td><td class="num">${totalCount}</td><td class="num"></td><td class="num">100%</td><td class="num">${fmtR(totalRevenue)}</td>`;
   tbody.appendChild(tfoot);
+}
+
+// ─── DAY OF WEEK ─────────────────────────────────────────────────────────────
+function buildDayOfWeek() {
+  const grid = document.getElementById('dowGrid');
+  grid.innerHTML = '';
+  if (!filtered.length) return;
+
+  const DAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  // Aggregate by day-of-week (0=Sun … 6=Sat)
+  const byDow = Array.from({length:7}, () => ({rev:0, pft:0, cost:0, count:0}));
+  filtered.forEach(d => {
+    const dow = d.date.getDay();
+    byDow[dow].rev   += d.revenue;
+    byDow[dow].pft   += d.profit || 0;
+    byDow[dow].cost  += d.costTotal || 0;
+    byDow[dow].count += 1;
+  });
+  const avgs = byDow.map(b =>
+    b.count > 0
+      ? { rev: b.rev/b.count, pft: b.pft/b.count, cost: b.cost/b.count, count: b.count }
+      : { rev: 0, pft: 0, cost: 0, count: 0 }
+  );
+
+  // Best/worst by avg revenue (only among days that have data)
+  const withData = avgs.map((a,i) => ({...a, i})).filter(a => a.count > 0);
+  if (!withData.length) return;
+  const bestDow  = withData.reduce((a,b) => b.rev > a.rev ? b : a).i;
+  const worstDow = withData.reduce((a,b) => b.rev < a.rev ? b : a).i;
+
+  // Render Mon→Sun (PT-BR order: 1,2,3,4,5,6,0)
+  [1,2,3,4,5,6,0].forEach(dow => {
+    const a = avgs[dow];
+    const isBest  = dow === bestDow  && a.count > 0;
+    const isWorst = dow === worstDow && a.count > 0;
+    const cell = document.createElement('div');
+    cell.className = 'dow-cell' + (isBest ? ' dow-best' : isWorst ? ' dow-worst' : '');
+    cell.innerHTML = `<div class="dow-day">${DAYS[dow]}</div>` + (a.count > 0 ? `
+      <div class="dow-val" style="color:${a.pft>=0?'var(--green)':'var(--red)'}">${fmtR(a.rev)}</div>
+      <div class="dow-sub">Lucro: ${fmtR(a.pft)}</div>
+      <div class="dow-sub">${a.count} dia${a.count>1?'s':''}</div>
+      ${isBest  ? '<div class="dow-badge best">✓ Melhor</div>'  : ''}
+      ${isWorst ? '<div class="dow-badge worst">⚠ Pior</div>' : ''}
+    ` : `<div class="dow-val" style="color:var(--text-muted)">—</div>`);
+    grid.appendChild(cell);
+  });
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────

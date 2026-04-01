@@ -1456,8 +1456,11 @@ function _readGAdsDaily_(ss) {
       if (cDate >= 0 && cCost >= 0) {
         for (let i = 1; i < vals.length; i++) {
           const raw = vals[i][cDate];
-          const dateStr = (raw instanceof Date)
-            ? Utilities.formatDate(raw, TZ, "yyyy-MM-dd")
+          const isDateObj = raw instanceof Date;
+          // Sheets converte strings "yyyy-MM-dd" para meia-noite UTC (T00:00:00.000Z).
+          // Formatar com TZ (São Paulo, UTC-3) resultaria em "dia anterior". Usar UTC.
+          const dateStr = isDateObj
+            ? Utilities.formatDate(raw, "UTC", "yyyy-MM-dd")
             : _normalizeGAdsDate_(String(raw || "").trim());
           if (!dateStr) continue;
           const cost = _parseGAdsNum_(vals[i][cCost]);
@@ -1465,6 +1468,8 @@ function _readGAdsDaily_(ss) {
         }
         const histTotal = Array.from(result.values()).reduce((s,v)=>s+v.cost,0);
         Logger.log("GAds_Historico: " + (vals.length - 1) + " dias, custo total = R$" + histTotal.toFixed(2));
+        Logger.log("GAds_Historico: tem 2026-03-31? " + result.has("2026-03-31") +
+                   " → cost=" + (result.get("2026-03-31") ? result.get("2026-03-31").cost : "N/A"));
       } else {
         Logger.log("GAds_Historico: colunas date/cost não encontradas. Headers: " + vals[0].join(" | "));
       }
@@ -1486,8 +1491,10 @@ function _readGAdsDaily_(ss) {
         const row  = vals[1];
         const raw  = row[cDate];
         // raw pode ser Date (Sheets auto-converte) ou string "yyyy-MM-dd"
-        const dateStr = (raw instanceof Date)
-          ? Utilities.formatDate(raw, TZ, "yyyy-MM-dd")
+        const isDateObj = raw instanceof Date;
+        // Mesmo fix: Sheets armazena string como meia-noite UTC → formatar em UTC.
+        const dateStr = isDateObj
+          ? Utilities.formatDate(raw, "UTC", "yyyy-MM-dd")
           : _normalizeGAdsDate_(String(raw || "").trim());
         const cost = _parseGAdsNum_(row[cCosto]);
         if (dateStr && cost >= 0) {

@@ -149,11 +149,13 @@ function updateHistory_(ss, today, cost, impr, clicks, conv, convVal, now) {
     return;
   }
 
-  // Procura linha com a data para fazer upsert
+  // Procura linha com a data para fazer upsert.
+  // Sheets armazena strings "yyyy-MM-dd" como meia-noite UTC (T00:00:00.000Z).
+  // Formatar com TIMEZONE (São Paulo, UTC-3) daria "dia anterior" → usar "UTC".
   for (var i = 1; i < data.length; i++) {
     var rowDate    = data[i][0];
     var rowDateStr = (rowDate instanceof Date)
-      ? Utilities.formatDate(rowDate, TIMEZONE, "yyyy-MM-dd")
+      ? Utilities.formatDate(rowDate, "UTC", "yyyy-MM-dd")
       : String(rowDate || "").trim().substring(0, 10);
     if (rowDateStr === today) {
       hist.getRange(i + 1, 1, 1, HIST_HEADERS.length).setValues([newRow]);
