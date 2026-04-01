@@ -282,6 +282,62 @@
       .funnel-count { font-size: 12px; }
       .funnel-bar { height: 30px; }
     }
+
+    /* ── Dark Mode ────────────────────────────────────────────────────────── */
+    [data-theme="dark"] {
+      --bg:#0f172a; --surface:#1e293b; --border:#334155;
+      --text-primary:#f1f5f9; --text-secondary:#94a3b8; --text-muted:#64748b;
+      --green-soft:rgba(22,163,74,.18); --red-soft:rgba(220,38,38,.18);
+      --amber-soft:rgba(217,119,6,.18);
+      --shadow:0 1px 3px rgba(0,0,0,.4),0 1px 2px rgba(0,0,0,.3);
+      --shadow-md:0 4px 16px rgba(0,0,0,.55);
+    }
+    [data-theme="dark"] .filter-select { color-scheme:dark; }
+    [data-theme="dark"] input[type="date"] { color-scheme:dark; }
+    [data-theme="dark"] .tr-total { background:#1a2942 !important; }
+    [data-theme="dark"] .tr-total:hover { background:#1d2f4a !important; }
+    .theme-btn { background:none; border:1px solid var(--border); border-radius:7px;
+      padding:5px 8px; cursor:pointer; font-size:15px; line-height:1;
+      color:var(--text-secondary); transition:border-color .15s; flex-shrink:0; }
+    .theme-btn:hover { border-color:var(--accent); }
+
+    /* ── Skeleton Loading ─────────────────────────────────────────────────── */
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    .skeleton { background:linear-gradient(90deg,var(--border) 25%,var(--bg) 50%,var(--border) 75%);
+      background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:4px; }
+    .kpi-skel-lbl  { height:11px; width:60%; margin-bottom:10px; }
+    .kpi-skel-val  { height:22px; width:72%; margin-bottom:12px; }
+    .kpi-skel-spark{ height:34px; width:100%; margin-bottom:8px; }
+    .kpi-skel-sub  { height:10px; width:80%; }
+
+    /* ── Tooltip ──────────────────────────────────────────────────────────── */
+    .has-tip { position:relative; cursor:help; }
+    .has-tip::after {
+      content:attr(data-tip);
+      position:absolute; bottom:calc(100% + 7px); left:50%;
+      transform:translateX(-50%);
+      background:#1e293b; color:#f1f5f9; font-size:11px; line-height:1.45;
+      padding:6px 10px; border-radius:7px; white-space:pre-wrap;
+      min-width:160px; max-width:240px; text-align:center;
+      opacity:0; pointer-events:none; transition:opacity .15s; z-index:500;
+      box-shadow:0 4px 12px rgba(0,0,0,.25);
+    }
+    .has-tip:hover::after { opacity:1; }
+
+    /* ── Sortable Table Headers ───────────────────────────────────────────── */
+    th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+    th.sortable:hover { color:var(--accent); }
+    th.sort-asc::after  { content:' ↑'; color:var(--accent); }
+    th.sort-desc::after { content:' ↓'; color:var(--accent); }
+
+    /* ── KPI Target Progress Bar ──────────────────────────────────────────── */
+    .kpi-tgt { height:3px; border-radius:2px; margin-top:5px; background:var(--border); overflow:hidden; }
+    .kpi-tgt-fill { height:100%; border-radius:2px; transition:width .6s ease; }
+
+    /* ── Keyboard shortcut hint ───────────────────────────────────────────── */
+    .kbd-hint { display:inline-block; background:var(--border); border-radius:3px;
+      font-size:10px; font-weight:700; padding:1px 4px; color:var(--text-muted);
+      letter-spacing:0; font-family:monospace; }
   </style>
 </head>
 <body>
@@ -323,6 +379,7 @@
         </div>
       </div>
     </div>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Alternar tema (dark/light)">🌙</button>
     <span id="freshnessWrap"><span class="fresh-dot" id="freshDot"></span><span id="lastUpdated"></span></span>
   </div>
 </header>
@@ -343,6 +400,12 @@
 
   <!-- ROW 2: Volume & efficiency -->
   <div class="kpi-row kpi-row-2" id="kpiRow2"></div>
+  <script>
+  (function(){
+    const s='<div class="kpi-card kpi-skel"><div class="kpi-skel-lbl skeleton"></div><div class="kpi-skel-val skeleton"></div><div class="kpi-skel-spark skeleton"></div><div class="kpi-skel-sub skeleton"></div></div>';
+    ['kpiRow1','kpiRow2'].forEach(id=>{ document.getElementById(id).innerHTML=s.repeat(6); });
+  })();
+  </script>
 
   <!-- Health gauges -->
   <div class="section-label" style="margin-top:24px">Saúde das Campanhas</div>
@@ -578,6 +641,8 @@ let usingRealData   = false;
 let UPSELL_TYPE_DATA = []; // rows: { dateStr, addonKey, label, count, revenue }
 const charts = {};
 const sparkRefs = {};
+let _campSort   = { col:-1, dir:1 };  // sort state for campaign table
+let _upsellSort = { col:-1, dir:1 };  // sort state for upsell type table
 
 // ─── DATE PICKER ─────────────────────────────────────────────────────────────
 function toggleDP() { document.getElementById('dateDD').classList.toggle('open'); }
@@ -614,13 +679,16 @@ function setPreset(preset, label, e) {
   filtered = ALL_DAYS.filter(d => d.dateStr >= fromDate && d.dateStr <= toDate);
   if (!filtered.length) filtered = [...ALL_DAYS]; // fallback: all data
   document.getElementById('dateDD').classList.remove('open');
+  try { localStorage.setItem('vp_filter', JSON.stringify({ preset, label, from:fromDate, to:toDate })); } catch(e){}
   render();
 }
 function applyCustomDate() {
   const f = document.getElementById('dateFrom').value, t = document.getElementById('dateTo').value;
   filtered = ALL_DAYS.filter(d=>d.dateStr>=f && d.dateStr<=t);
-  document.getElementById('dateLabel').textContent = `${fmt2(f)} – ${fmt2(t)}`;
+  const lbl2 = `${fmt2(f)} – ${fmt2(t)}`;
+  document.getElementById('dateLabel').textContent = lbl2;
   document.getElementById('dateDD').classList.remove('open');
+  try { localStorage.setItem('vp_filter', JSON.stringify({ preset:'custom', label:lbl2, from:f, to:t })); } catch(e){}
   render();
 }
 function applyFilters() { activeCamp = document.getElementById('campaignFilter').value; render(); }
@@ -739,20 +807,27 @@ function buildKPIs(T) {
     ? `Proj.: ${_fmtK(_projProfit)}${MONTHLY_PROFIT_TARGET > 0 ? ' · Meta: '+_fmtK(MONTHLY_PROFIT_TARGET) : ''}`
     : 'receita − ads − bureau';
 
+  // Target % for progress bars (vs monthly target, when applicable)
+  const _tgtRev    = MONTHLY_REVENUE_TARGET > 0 ? Math.min(110, T.rev    / MONTHLY_REVENUE_TARGET  * 100) : null;
+  const _tgtCost   = MONTHLY_BUDGET > 0         ? Math.min(110, T.costTotal / MONTHLY_BUDGET       * 100) : null;
+  const _tgtProfit = MONTHLY_PROFIT_TARGET > 0  ? Math.min(110, T.pft   / MONTHLY_PROFIT_TARGET   * 100) : null;
+  const _tgtCac    = TARGET_CPA > 0             ? Math.min(110, TARGET_CPA / Math.max(T.cac, 0.01) * 100) : null;
+  const _tgtUpsell = TARGET_UPSELL > 0          ? Math.min(110, T.upsell / TARGET_UPSELL           * 100) : null;
+
   const row1 = [
-    { id:'r',  label:'Receita Bruta',    value:fmtR(T.rev),              delta:d(T.rev,P?.rev,false),        sub:_revSub,                    color:'blue',                          dir:'up',      badge:'receita',  spark:filtered.map(x=>x.revenue),               sc:'#16a34a' },
-    { id:'ct', label:'Custo Total COGS', value:fmtR(T.costTotal),        delta:d(T.costTotal,P?.costTotal,true), sub:_costSub,                 color:'red',                           dir:'neutral', badge:'custos',   spark:filtered.map(x=>x.costTotal||0),           sc:'#dc2626' },
-    { id:'p',  label:'Lucro Bruto',      value:fmtR(T.pft),              delta:d(T.pft,P?.pft,false),        sub:_profitSub,                 color:T.pft>=0?'green':'red',          dir:T.pft>=0?'up':'down', badge:T.pft>=0?'positivo':'negativo', spark:filtered.map(x=>x.profit||0), sc:T.pft>=0?'#16a34a':'#dc2626' },
+    { id:'r',  label:'Receita Bruta',    value:fmtR(T.rev),              delta:d(T.rev,P?.rev,false),        sub:_revSub,                    color:'blue',                          dir:'up',      badge:'receita',  spark:filtered.map(x=>x.revenue),               sc:'#16a34a', targetPct:_tgtRev },
+    { id:'ct', label:'Custo Total COGS', value:fmtR(T.costTotal),        delta:d(T.costTotal,P?.costTotal,true), sub:_costSub,                 color:'red',                           dir:'neutral', badge:'custos',   spark:filtered.map(x=>x.costTotal||0),           sc:'#dc2626', targetPct:_tgtCost,   targetReverse:true },
+    { id:'p',  label:'Lucro Bruto',      value:fmtR(T.pft),              delta:d(T.pft,P?.pft,false),        sub:_profitSub,                 color:T.pft>=0?'green':'red',          dir:T.pft>=0?'up':'down', badge:T.pft>=0?'positivo':'negativo', spark:filtered.map(x=>x.profit||0), sc:T.pft>=0?'#16a34a':'#dc2626', targetPct:_tgtProfit },
     { id:'m',  label:'Margem',           value:fmtN(T.margin*100,1)+'%', delta:d(T.margin,P?.margin,false),  sub:'contribuição real',         color:T.margin>=.22?'green':'amber',   dir:T.margin>=.22?'up':'neutral', badge:T.margin>=.22?'saudável':'atenção', spark:filtered.map(x=>x.revenue>0?((x.profit||0)/x.revenue)*100:0), sc:'#16a34a' },
     { id:'ro', label:'ROAS',             value:fmtN(T.roas,2,'')+'×',    delta:d(T.roas,P?.roas,false),      sub:'retorno s/ investimento',  color:T.roas>=1?'green':T.roas>=.8?'amber':'red', dir:T.roas>=1?'up':'down', badge:T.roas>=1.5?'bom':T.roas>=1?'aceitável':'crítico', spark:filtered.map(x=>x.costTotal>0?x.revenue/x.costTotal:0), sc:'#2563eb', alert:T.roas<1 },
-    { id:'ca', label:'CAC',              value:T.cac>0?fmtR(T.cac):'—',  delta:d(T.cac,P?.cac,true),        sub:'meta: '+fmtR(TARGET_CPA),  color:T.cac>0&&T.cac<=TARGET_CPA?'green':T.cac>0?'red':'blue', dir:T.cac>0&&T.cac<=TARGET_CPA?'up':T.cac>0?'down':'neutral', badge:T.cac>0&&T.cac<=TARGET_CPA?'dentro da meta':T.cac>0?'acima da meta':'s/ ads', spark:filtered.map(x=>x.cac), sc:T.cac>0&&T.cac<=TARGET_CPA?'#16a34a':'#dc2626', alert:T.cac>TARGET_CPA*1.15 },
+    { id:'ca', label:'CAC',              value:T.cac>0?fmtR(T.cac):'—',  delta:d(T.cac,P?.cac,true),        sub:'meta: '+fmtR(TARGET_CPA),  color:T.cac>0&&T.cac<=TARGET_CPA?'green':T.cac>0?'red':'blue', dir:T.cac>0&&T.cac<=TARGET_CPA?'up':T.cac>0?'down':'neutral', badge:T.cac>0&&T.cac<=TARGET_CPA?'dentro da meta':T.cac>0?'acima da meta':'s/ ads', spark:filtered.map(x=>x.cac), sc:T.cac>0&&T.cac<=TARGET_CPA?'#16a34a':'#dc2626', alert:T.cac>TARGET_CPA*1.15, targetPct:_tgtCac, targetReverse:false },
   ];
   const row2 = [
-    { id:'ga', label:'Gasto Google Ads', value:fmtR(T.cost),           delta:d(T.cost,P?.cost,true),       sub:'custo_ads',               color:'amber', dir:'neutral', badge:'ads',    spark:filtered.map(x=>x.cost||0),        sc:'#f59e0b' },
+    { id:'ga', label:'Gasto Google Ads', value:fmtR(T.cost),           delta:d(T.cost,P?.cost,true),       sub:'custo_ads',               color:'amber', dir:'neutral', badge:'ads',    spark:filtered.map(x=>x.cost||0),        sc:'#f59e0b', targetPct:_tgtCost, targetReverse:true },
     { id:'gb', label:'Gasto Bureau',     value:fmtR(T.costBureau),     delta:d(T.costBureau,P?.costBureau,true), sub:'custo_bureau',      color:'amber', dir:'neutral', badge:'bureau', spark:filtered.map(x=>x.costBureau||0),  sc:'#d97706' },
     { id:'tr', label:'Transações',       value:fmtN(T.conv,0,''),      delta:d(T.conv,P?.conv,false),      sub:'conversões',             color:'blue',  dir:'up',      badge:'pedidos', spark:filtered.map(x=>x.conv),           sc:'#2563eb' },
     { id:'tk', label:'Ticket Médio',     value:fmtR(T.ticket),         delta:null,                         sub:'por compra',             color:'blue',  dir:'neutral', badge:'estável', spark:filtered.map(()=>T.ticket),        sc:'#0891b2' },
-    { id:'up', label:'Taxa de Upsell',   value:fmtN(T.upsell,1)+'%',  delta:d(T.upsell,P?.upsell,false),  sub:'meta: '+TARGET_UPSELL+'%', color:T.upsell>=TARGET_UPSELL?'green':'amber', dir:T.upsell>=TARGET_UPSELL?'up':'neutral', badge:T.upsell>=TARGET_UPSELL?'meta atingida':fmtN(TARGET_UPSELL-T.upsell,1)+'pp abaixo', spark:filtered.map(x=>x.upsellRate), sc:'#7c3aed' },
+    { id:'up', label:'Taxa de Upsell',   value:fmtN(T.upsell,1)+'%',  delta:d(T.upsell,P?.upsell,false),  sub:'meta: '+TARGET_UPSELL+'%', color:T.upsell>=TARGET_UPSELL?'green':'amber', dir:T.upsell>=TARGET_UPSELL?'up':'neutral', badge:T.upsell>=TARGET_UPSELL?'meta atingida':fmtN(TARGET_UPSELL-T.upsell,1)+'pp abaixo', spark:filtered.map(x=>x.upsellRate), sc:'#7c3aed', targetPct:_tgtUpsell },
     { id:'cv', label:'Taxa de Conversão',value:fmtN(T.convRate,2)+'%', delta:d(T.convRate,P?.convRate,false), sub:'checkout → compra',   color:'blue',  dir:'up',      badge:'+2pp',   spark:filtered.map(()=>T.convRate),      sc:'#0891b2' },
   ];
   renderRow('kpiRow1', row1);
@@ -761,7 +836,8 @@ function buildKPIs(T) {
 
 function renderRow(rowId, defs) {
   const row = document.getElementById(rowId);
-  if (row.children.length !== defs.length) {
+  const hasSkel = row.firstChild && row.firstChild.classList && row.firstChild.classList.contains('kpi-skel');
+  if (row.children.length !== defs.length || hasSkel) {
     row.innerHTML = '';
     defs.forEach(k => {
       const el = document.createElement('div');
@@ -774,6 +850,7 @@ function renderRow(rowId, defs) {
         <div class="kpi-value" id="kv_${k.id}"></div>
         <div id="kd_${k.id}" class="kpi-delta"></div>
         <div class="kpi-spark-wrap"><canvas id="ks_${k.id}"></canvas></div>
+        <div class="kpi-tgt" id="kt_${k.id}" style="display:none"><div class="kpi-tgt-fill" id="ktf_${k.id}"></div></div>
         <div class="kpi-sub" id="ksub_${k.id}"></div>
         <div class="kpi-accent ${k.color}" id="ka_${k.id}"></div>`;
       row.appendChild(el);
@@ -795,6 +872,22 @@ function renderRow(rowId, defs) {
     // Alert pulse border
     const card = document.getElementById('kc_'+k.id);
     if (card) card.classList.toggle('alert-pulse', !!k.alert);
+    // Target progress bar
+    const tgtWrap = document.getElementById('kt_'+k.id);
+    const tgtFill = document.getElementById('ktf_'+k.id);
+    if (tgtWrap && tgtFill) {
+      if (k.targetPct != null && k.targetPct > 0) {
+        tgtWrap.style.display = 'block';
+        const pct = Math.min(110, Math.max(0, k.targetPct));
+        const col = k.targetReverse
+          ? (pct > 100 ? 'var(--red)' : pct > 85 ? 'var(--amber)' : 'var(--green)')
+          : (pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)');
+        tgtFill.style.width   = pct + '%';
+        tgtFill.style.background = col;
+      } else {
+        tgtWrap.style.display = 'none';
+      }
+    }
     drawSpark('ks_'+k.id, k.spark, k.sc);
   });
 }
@@ -1076,11 +1169,41 @@ function mkChart(id, type, data, options) {
 // ─── TABLE ────────────────────────────────────────────────────────────────────
 function buildTable() {
   const camps = campTotals();
-  const maxCac  = Math.max(...camps.map(c=>c.cac));
   const totalCostAllCamps = camps.reduce((s,c)=>s+c.cost, 0);
+
+  // Sortable headers — init once, then just update arrow classes
+  const thead = document.querySelector('#campaignTable thead tr');
+  if (!thead.dataset.sortInit) {
+    thead.dataset.sortInit = '1';
+    thead.querySelectorAll('th').forEach((th, i) => {
+      th.classList.add('sortable');
+      th.addEventListener('click', () => {
+        if (_campSort.col === i) _campSort.dir *= -1;
+        else { _campSort.col = i; _campSort.dir = 1; }
+        buildTable();
+      });
+    });
+  }
+  thead.querySelectorAll('th').forEach((th, i) => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (i === _campSort.col) th.classList.add(_campSort.dir > 0 ? 'sort-asc' : 'sort-desc');
+  });
+
+  // Sort rows
+  const sorted = [...camps];
+  if (_campSort.col >= 0) {
+    sorted.sort((a, b) => {
+      if (_campSort.col === 0) return a.name.localeCompare(b.name) * _campSort.dir;
+      const vals = [null, b=>b.conv, b=>b.cost, b=>b.cost, b=>b.rev, b=>b.pft, b=>b.roas, b=>b.cac];
+      const fn = vals[_campSort.col]; if (!fn) return 0;
+      return (fn(a) - fn(b)) * _campSort.dir;
+    });
+  }
+
+  const maxCac = Math.max(...sorted.map(c=>c.cac));
   const tbody = document.querySelector('#campaignTable tbody');
   tbody.innerHTML = '';
-  camps.forEach(c => {
+  sorted.forEach(c => {
     const pct     = Math.round((c.cac/maxCac)*100);
     const col     = c.cac<=TARGET_CPA?'#16a34a':c.cac<=TARGET_CPA*1.2?'#d97706':'#dc2626';
     const spendPct = totalCostAllCamps > 0 ? fmtN((c.cost/totalCostAllCamps)*100,1)+'%' : '—';
@@ -1161,9 +1284,37 @@ function buildUpsellTypeTable() {
   }
 
   const totalCount = Array.from(agg.values()).reduce((s, e) => s + e.count, 0);
-  const rows = Array.from(agg.entries())
-    .map(([key, e]) => ({ key, ...e }))
-    .sort((a, b) => b.count - a.count);
+  let rows = Array.from(agg.entries())
+    .map(([key, e]) => ({ key, ...e }));
+
+  // Sortable headers for upsell table — init once
+  const uThead = document.querySelector('#upsellTypeTable thead tr');
+  if (!uThead.dataset.sortInit) {
+    uThead.dataset.sortInit = '1';
+    uThead.querySelectorAll('th').forEach((th, i) => {
+      th.classList.add('sortable');
+      th.addEventListener('click', () => {
+        if (_upsellSort.col === i) _upsellSort.dir *= -1;
+        else { _upsellSort.col = i; _upsellSort.dir = 1; }
+        buildUpsellTypeTable();
+      });
+    });
+  }
+  uThead.querySelectorAll('th').forEach((th, i) => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (i === _upsellSort.col) th.classList.add(_upsellSort.dir > 0 ? 'sort-asc' : 'sort-desc');
+  });
+
+  if (_upsellSort.col >= 0) {
+    rows.sort((a, b) => {
+      if (_upsellSort.col === 0) return a.label.localeCompare(b.label) * _upsellSort.dir;
+      const fns = [null, r=>r.count, r=>{ const t=trendIcon(r.key); return t.icon==='↑'?1:t.icon==='↓'?-1:0; }, r=>r.count/totalCount, r=>r.revenue];
+      const fn = fns[_upsellSort.col]; if (!fn) return 0;
+      return (fn(a) - fn(b)) * _upsellSort.dir;
+    });
+  } else {
+    rows.sort((a, b) => b.count - a.count); // default: by count desc
+  }
 
   rows.forEach(r => {
     const pct = totalCount ? ((r.count / totalCount) * 100).toFixed(1) : '0.0';
@@ -1326,32 +1477,32 @@ function buildTodayPace() {
         <span class="pace-status" style="color:${paceColor}">${paceTxt}</span>
       </div>
       <div class="pace-grid">
-        <div class="pace-stat">
+        <div class="pace-stat has-tip" data-tip="Receita acumulada desde meia-noite até agora.\nComparado à média dos últimos 30 dias neste mesmo horário.">
           <span class="pace-lbl">Receita até agora</span>
           <span class="pace-val">${fmtR(today.revenue)}</span>
           <span class="pace-sub">${revPctOfAvg}% da média diária · esp. ${fmtR(expectedRev)}</span>
         </div>
-        <div class="pace-stat">
+        <div class="pace-stat has-tip" data-tip="Estimativa extrapolando o ritmo atual\naté o fim do dia (receita ÷ % do dia decorrido).">
           <span class="pace-lbl">Projeção fim do dia</span>
           <span class="pace-val" style="color:${eodRev&&eodRev>=avgRev*0.9?'var(--green)':'var(--amber)'}">${eodRev?fmtR(eodRev):'—'}</span>
           <span class="pace-sub">Média: ${fmtR(avgRev)}/dia</span>
         </div>
-        <div class="pace-stat">
+        <div class="pace-stat has-tip" data-tip="Resultado completo do dia anterior.\nÚtil para comparar com o ritmo de hoje.">
           <span class="pace-lbl">Ontem (completo)</span>
           <span class="pace-val">${yest?fmtR(yest.revenue):'—'}</span>
           <span class="pace-sub">${yest?'Lucro: '+fmtR(yest.profit||0):'sem dados'}</span>
         </div>
-        <div class="pace-stat">
+        <div class="pace-stat has-tip" data-tip="Investimento em Google Ads hoje.\nProjeção = custo atual ÷ % do dia decorrido.">
           <span class="pace-lbl">Custo Ads hoje</span>
           <span class="pace-val">${fmtR(today.cost||0)}</span>
           <span class="pace-sub">Proj.: ${eodCost?fmtR(eodCost):'—'}</span>
         </div>
-        <div class="pace-stat">
+        <div class="pace-stat has-tip" data-tip="Custo de Aquisição por Cliente hoje.\nFórmula: Custo Total ÷ Conversões do dia.">
           <span class="pace-lbl">CAC do dia</span>
           <span class="pace-val" style="color:${today.cac&&today.cac<=TARGET_CPA?'var(--green)':today.cac?'var(--red)':'inherit'}">${today.cac?fmtR(today.cac):'—'}</span>
           <span class="pace-sub">Meta: ${fmtR(TARGET_CPA)}</span>
         </div>
-        <div class="pace-stat">
+        <div class="pace-stat has-tip" data-tip="Total de pedidos (conversões) registrados hoje.\nComparado à média dos últimos 30 dias.">
           <span class="pace-lbl">Conversões</span>
           <span class="pace-val">${fmtN(today.conv,0,'')}</span>
           <span class="pace-sub">Média: ${fmtN(avgConv,1,'')}/dia</span>
@@ -1493,13 +1644,29 @@ async function initDashboard() {
     }
   }
 
-  // Default: mês corrente (mesmo preset marcado como "active" no HTML)
+  // Restore filter from localStorage (or default to current month)
   const _now     = new Date();
   const _pad     = n => String(n).padStart(2,'0');
   const _today   = `${_now.getFullYear()}-${_pad(_now.getMonth()+1)}-${_pad(_now.getDate())}`;
   const _moStart = _today.slice(0,7)+'-01';
-  filtered = ALL_DAYS.filter(d => d.dateStr >= _moStart && d.dateStr <= _today);
-  if (!filtered.length) filtered = [...ALL_DAYS]; // fallback: sem dados do mês ainda
+  let _restored = false;
+  try {
+    const _saved = JSON.parse(localStorage.getItem('vp_filter'));
+    if (_saved && _saved.from) {
+      filtered = ALL_DAYS.filter(d => d.dateStr >= _saved.from && d.dateStr <= _saved.to);
+      if (filtered.length) {
+        _restored = true;
+        document.getElementById('dateLabel').textContent = _saved.label || _saved.preset;
+        document.querySelectorAll('.date-preset').forEach(el => {
+          el.classList.toggle('active', el.getAttribute('onclick')?.includes(_saved.preset));
+        });
+      }
+    }
+  } catch(e) {}
+  if (!_restored) {
+    filtered = ALL_DAYS.filter(d => d.dateStr >= _moStart && d.dateStr <= _today);
+    if (!filtered.length) filtered = [...ALL_DAYS]; // fallback: sem dados do mês ainda
+  }
 
   // Atualiza label dinâmico do mês no dropdown (ex: "abr/26")
   const _MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
@@ -1511,6 +1678,39 @@ async function initDashboard() {
 }
 
 initDashboard();
+
+// ─── DARK MODE ────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
+  document.getElementById('themeBtn').textContent = isDark ? '🌙' : '☀️';
+  try { localStorage.setItem('vp_theme', isDark ? 'light' : 'dark'); } catch(e){}
+}
+// Apply saved theme immediately
+(function(){
+  try {
+    if (localStorage.getItem('vp_theme') === 'dark') {
+      document.documentElement.setAttribute('data-theme','dark');
+      const btn = document.getElementById('themeBtn');
+      if (btn) btn.textContent = '☀️';
+    }
+  } catch(e){}
+})();
+
+// ─── KEYBOARD SHORTCUTS ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA') return;
+  if (e.metaKey||e.ctrlKey||e.altKey) return;
+  const presets = { '1':'today','2':'7d','3':'14d','4':'month','5':'lastmonth' };
+  if (e.key==='r'||e.key==='R') { e.preventDefault(); initDashboard(); return; }
+  const preset = presets[e.key];
+  if (preset) {
+    e.preventDefault();
+    const el = document.querySelector(`.date-preset[onclick*="${preset}"]`);
+    if (el) el.click();
+  }
+  if (e.key==='d'||e.key==='D') { e.preventDefault(); toggleTheme(); }
+});
 </script>
 </body>
 </html>
