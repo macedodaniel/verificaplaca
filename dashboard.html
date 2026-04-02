@@ -66,6 +66,11 @@
     .date-dropdown { display: none; position: absolute; right: 0; top: calc(100% + 6px);
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
       box-shadow: var(--shadow-md); z-index: 200; min-width: 240px; overflow: hidden; }
+    @media (max-width: 600px) {
+      .date-dropdown { position: fixed; top: auto; left: 10px; right: 10px;
+        width: auto; min-width: unset; border-radius: 12px;
+        /* position below the header bar */ margin-top: 0; }
+    }
     .date-dropdown.open { display: block; }
     .date-presets { padding: 6px; display: flex; flex-direction: column; gap: 1px; }
     .date-preset { padding: 7px 10px; font-size: 12.5px; border-radius: 6px; cursor: pointer;
@@ -88,8 +93,8 @@
                      color: var(--text-muted); margin-bottom: 12px; margin-top: 28px; }
     .section-label:first-child { margin-top: 0; }
 
-    /* KPI Rows — align-items:start prevents cards from stretching to each other's height */
-    .kpi-row { display: grid; gap: 10px; margin-bottom: 10px; align-items: start; }
+    /* KPI Rows — stretch makes all cards in a row the same height */
+    .kpi-row { display: grid; gap: 10px; margin-bottom: 10px; align-items: stretch; }
     .kpi-row-1 { grid-template-columns: repeat(6, 1fr); }
     .kpi-row-2 { grid-template-columns: repeat(6, 1fr); }
     @media (max-width: 1400px) { .kpi-row-1, .kpi-row-2 { grid-template-columns: repeat(3, 1fr); } }
@@ -237,8 +242,21 @@
     .gauge-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
     /* Table */
-    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; position: relative; }
     table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 12.5px; }
+    /* Scroll hint: fade + indicator bar visible on mobile */
+    @media (max-width: 700px) {
+      .table-wrap-scroll { scrollbar-width: thin; scrollbar-color: var(--accent) var(--border); }
+      .table-wrap-scroll::-webkit-scrollbar { height: 4px; }
+      .table-wrap-scroll::-webkit-scrollbar-track { background: var(--border); border-radius: 2px; }
+      .table-wrap-scroll::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+      /* Right-fade gradient indicating more content */
+      .table-wrap-scroll::after {
+        content: ''; pointer-events: none;
+        position: absolute; top: 0; right: 0; width: 32px; height: 100%;
+        background: linear-gradient(to left, var(--surface) 0%, transparent 100%);
+      }
+    }
     thead tr { border-bottom: 2px solid var(--border); }
     th { text-align: left; font-size: 10.5px; font-weight: 600; text-transform: uppercase;
          letter-spacing: .06em; color: var(--text-muted); padding: 0 10px 10px; }
@@ -493,7 +511,7 @@
   <!-- Upsell type table -->
   <div class="section-label" style="margin-top:24px">Upsell por Tipo · Período Selecionado</div>
   <div class="card">
-    <div class="table-wrap">
+    <div class="table-wrap table-wrap-scroll">
       <table id="upsellTypeTable">
         <thead><tr>
           <th>Tipo de Upsell</th>
@@ -650,7 +668,18 @@ let _campSort   = { col:-1, dir:1 };  // sort state for campaign table
 let _upsellSort = { col:-1, dir:1 };  // sort state for upsell type table
 
 // ─── DATE PICKER ─────────────────────────────────────────────────────────────
-function toggleDP() { document.getElementById('dateDD').classList.toggle('open'); }
+function toggleDP() {
+  const dd  = document.getElementById('dateDD');
+  const btn = document.querySelector('.date-picker-btn');
+  if (window.innerWidth <= 600 && btn) {
+    // fixed mode: position below the button
+    const rect = btn.getBoundingClientRect();
+    dd.style.top = (rect.bottom + 6) + 'px';
+  } else {
+    dd.style.top = '';
+  }
+  dd.classList.toggle('open');
+}
 document.addEventListener('click', e => {
   if (!document.getElementById('dpWrapper').contains(e.target))
     document.getElementById('dateDD').classList.remove('open');
@@ -1079,7 +1108,9 @@ function buildCharts(T) {
     ]
   },{
     responsive:true, maintainAspectRatio:false,
-    layout:{ padding:{ top:22, right:52, bottom:4, left:4 } },
+    layout:{ padding:{ top: window.innerWidth < 600 ? 36 : 22,
+                       right: window.innerWidth < 600 ? 20 : 52,
+                       bottom:4, left:4 } },
     interaction:{mode:'index',intersect:false},
     plugins:{
       legend:{labels:{font:{size:11.5},boxWidth:10,padding:14}},
@@ -1090,9 +1121,9 @@ function buildCharts(T) {
         anchor: ctx => ctx.datasetIndex === 0 ? 'end' : 'start',
         align:  ctx => ctx.datasetIndex === 0 ? 'top' : 'bottom',
         formatter: v => v >= 1000 ? 'R$'+(v/1000).toFixed(1)+'k' : v > 0 ? 'R$'+Math.round(v) : null,
-        font:{ size: _revLblSize, weight:'600' },
+        font:{ size: window.innerWidth < 600 ? Math.min(_revLblSize, 9) : _revLblSize, weight:'600' },
         color: ctx => ctx.datasetIndex === 0 ? '#15803d' : '#1d4ed8',
-        padding: { left:2, right:2, top:1, bottom:1 },
+        padding: { left:2, right:2, top: window.innerWidth < 600 ? 4 : 1, bottom: window.innerWidth < 600 ? 4 : 1 },
       }
     },
     scales:{ x:{grid:{display:false},ticks:{font:{size:10.5},maxTicksLimit:10}},
@@ -1119,9 +1150,9 @@ function buildCharts(T) {
         display: ctx => ctx.datasetIndex===0, // only on bars, not on the line
         anchor:'end', align:'end',
         formatter: v => 'R$'+Math.round(v),
-        font:{ size: d.length>14 ? 7.5 : 9, weight:'600' },
+        font:{ size: d.length>14 ? 7.5 : (window.innerWidth < 600 ? 8.5 : 9), weight:'600' },
         color: ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? '#15803d' : '#b91c1c',
-        offset: 2,
+        offset: window.innerWidth < 600 ? 4 : 2,
       }
     },
     scales:{ x:{grid:{display:false},ticks:{font:{size:10},maxTicksLimit:10}},
@@ -1444,7 +1475,7 @@ function buildFunnel() {
     // Bar row
     const row = document.createElement('div');
     row.className = 'funnel-row';
-    const barW = Math.max(step.pct, 4); // minimum visible width
+    const barW = Math.max(Math.min(step.pct, 100), 4); // clamp 4–100%
     const subTxt = i === 0 ? 'topo do funil'
                  : i === 1 ? (convRate != null ? `${convRate.toFixed(1)}% dos checkouts` : '% de checkouts')
                  :            (upsellRate != null ? `${upsellRate.toFixed(1)}% dos pedidos` : '% dos pedidos');
@@ -1545,7 +1576,7 @@ function buildTodayPace() {
   wrap.innerHTML = `
     <div class="pace-card">
       <div class="pace-header">
-        <span class="pace-title">⏱ Ritmo do Dia · ${hourStr} · ${dayPct}% do dia</span>
+        <span class="pace-title">⏱ Pacing do dia · ${hourStr} · ${dayPct}% do dia</span>
         <span class="pace-status" style="color:${paceColor}">${paceTxt}</span>
       </div>
       <div class="pace-grid">

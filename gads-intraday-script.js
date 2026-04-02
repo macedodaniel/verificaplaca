@@ -37,62 +37,78 @@ function main() {
   var today = Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd");
   var now   = Utilities.formatDate(new Date(), TIMEZONE, "dd/MM/yyyy HH:mm");
 
-  // ── Consulta GAQL — todas campanhas ativas HOJE ──
-  var query = [
-    "SELECT",
-    "  campaign.name,",
-    "  campaign.status,",
-    "  metrics.cost_micros,",
-    "  metrics.impressions,",
-    "  metrics.clicks,",
-    "  metrics.conversions,",
-    "  metrics.conversions_value",
+  // ── Query 1: custo, impressões, cliques por campanha (sem segmentar por conversão) ──
+  // Segmentar por conversion_action junto com cost_micros duplicaria o custo.
+  var costByName   = {};  // campanha → { status, cost, impr, clicks }
+  var queryCost = [
+    "SELECT campaign.name, campaign.status,",
+    "  metrics.cost_micros, metrics.impressions, metrics.clicks",
+    "FROM campaign",
+    "WHERE segments.date DURING TODAY",
+    "  AND campaign.status != 'REMOVED'"
+  ].join(" ");
+  var rCost = AdsApp.search(queryCost);
+  while (rCost.hasNext()) {
+    var r = rCost.next();
+    var n = r.campaign.name;
+    if (!costByName[n]) costByName[n] = { status: r.campaign.status, cost:0, impr:0, clicks:0 };
+    costByName[n].cost   += (r.metrics.costMicros || 0) / 1e6;
+    costByName[n].impr   += parseInt(r.metrics.impressions || 0, 10);
+    costByName[n].clicks += parseInt(r.metrics.clicks      || 0, 10);
+  }
+
+  // ── Query 2: somente conversões do tipo PURCHASE ──────────────────────────
+  // segments.conversion_action_category = 'PURCHASE' garante apenas compras reais.
+  var convByName = {};  // campanha → { conv, convVal }
+  var queryConv = [
+    "SELECT campaign.name, segments.conversion_action_category,",
+    "  metrics.conversions, metrics.conversions_value",
     "FROM campaign",
     "WHERE segments.date DURING TODAY",
     "  AND campaign.status != 'REMOVED'",
-    "ORDER BY metrics.cost_micros DESC"
+    "  AND segments.conversion_action_category = 'PURCHASE'"
   ].join(" ");
+  var rConv = AdsApp.search(queryConv);
+  while (rConv.hasNext()) {
+    var r = rConv.next();
+    var n = r.campaign.name;
+    if (!convByName[n]) convByName[n] = { conv:0, convVal:0 };
+    convByName[n].conv    += parseFloat(r.metrics.conversions      || 0);
+    convByName[n].convVal += parseFloat(r.metrics.conversionsValue || 0);
+  }
 
-  var report = AdsApp.search(query);
-
-  // Totais agregados
-  var totalCost       = 0;
+  // ── Mescla as duas queries ────────────────────────────────────────────────
+  var totalCost        = 0;
   var totalImpressions = 0;
-  var totalClicks     = 0;
-  var totalConv       = 0;
-  var totalConvValue  = 0;
+  var totalClicks      = 0;
+  var totalConv        = 0;
+  var totalConvValue   = 0;
+  var campRows         = [];
 
-  // Linhas por campanha
-  var campRows = [];
+  Object.keys(costByName).forEach(function(name) {
+    var c  = costByName[name];
+    var cv = convByName[name] || { conv:0, convVal:0 };
 
-  while (report.hasNext()) {
-    var row     = report.next();
-    var camp    = row.campaign;
-    var metrics = row.metrics;
-
-    var cost      = (metrics.costMicros      || 0) / 1e6;
-    var impr      = metrics.impressions      || 0;
-    var clicks    = metrics.clicks           || 0;
-    var conv      = metrics.conversions      || 0;
-    var convVal   = metrics.conversionsValue || 0;
-
-    totalCost        += cost;
-    totalImpressions += parseInt(impr,  10);
-    totalClicks      += parseInt(clicks, 10);
-    totalConv        += parseFloat(conv);
-    totalConvValue   += parseFloat(convVal);
+    totalCost        += c.cost;
+    totalImpressions += c.impr;
+    totalClicks      += c.clicks;
+    totalConv        += cv.conv;
+    totalConvValue   += cv.convVal;
 
     campRows.push([
       today,
-      camp.name,
-      camp.status,
-      round2(cost),
-      parseInt(impr,  10),
-      parseInt(clicks, 10),
-      round2(parseFloat(conv)),
-      round2(parseFloat(convVal))
+      name,
+      c.status,
+      round2(c.cost),
+      c.impr,
+      c.clicks,
+      round2(cv.conv),
+      round2(cv.convVal)
     ]);
-  }
+  });
+
+  // Ordena por custo desc (mesma ordem do Google Ads UI)
+  campRows.sort(function(a, b) { return b[3] - a[3]; });
 
   // ── Grava na planilha ──────────────────────────────────────────────────────
   sheet.clearContents();
@@ -121,6 +137,18 @@ function main() {
 
   // ── Acumula breakdown por campanha em GAds_Campanhas (upsert por data+campanha) ──
   updateCampaignHistory_(ss, today, campRows, now);
+
+  // ── Grava purchases em GAds_Conversoes (checkouts vêm do Pagar.me via pagarme-unified.js) ──
+  // Auto-backfill: se a aba tiver menos de 7 dias, popula o histórico completo.
+  var convSh = ss.getSheetByName(CONV_SHEET_NAME);
+  var convRows = convSh ? convSh.getLastRow() - 1 : 0;
+  if (convRows < 7) {
+    Logger.log("GAds_Conversoes incompleto (" + convRows + " linhas). Rodando backfill automático...");
+    backfillConversoes();
+    Logger.log("Backfill de conversões concluído.");
+  } else {
+    updateConversoesDiarias_(ss, today, now);
+  }
 
   Logger.log(
     "GAds_Hoje: " + campRows.length + " campanhas · " +
@@ -188,33 +216,40 @@ function backfillGAdsHistory() {
   startDate.setDate(startDate.getDate() - DAYS_BACK);
   var fmt = function(d) { return Utilities.formatDate(d, TIMEZONE, "yyyy-MM-dd"); };
 
-  var query = [
-    "SELECT",
-    "  segments.date,",
-    "  metrics.cost_micros,",
-    "  metrics.impressions,",
-    "  metrics.clicks,",
-    "  metrics.conversions,",
-    "  metrics.conversions_value",
+  // Query 1: custo por data (sem segmentar por conversão)
+  var queryCostHist = [
+    "SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks",
     "FROM campaign",
     "WHERE segments.date BETWEEN '" + fmt(startDate) + "' AND '" + fmt(endDate) + "'",
     "  AND campaign.status != 'REMOVED'"
   ].join(" ");
-
-  var report = AdsApp.search(query);
-
-  // Agrega por data
   var byDate = {};
-  while (report.hasNext()) {
-    var row     = report.next();
-    var date    = row.segments.date;          // "yyyy-MM-dd"
-    var metrics = row.metrics;
+  var rCostH = AdsApp.search(queryCostHist);
+  while (rCostH.hasNext()) {
+    var row = rCostH.next();
+    var date = row.segments.date;
     if (!byDate[date]) byDate[date] = { cost:0, impr:0, clicks:0, conv:0, convVal:0 };
-    byDate[date].cost    += (metrics.costMicros      || 0) / 1e6;
-    byDate[date].impr    += parseInt(metrics.impressions      || 0, 10);
-    byDate[date].clicks  += parseInt(metrics.clicks           || 0, 10);
-    byDate[date].conv    += parseFloat(metrics.conversions    || 0);
-    byDate[date].convVal += parseFloat(metrics.conversionsValue || 0);
+    byDate[date].cost  += (row.metrics.costMicros || 0) / 1e6;
+    byDate[date].impr  += parseInt(row.metrics.impressions || 0, 10);
+    byDate[date].clicks+= parseInt(row.metrics.clicks      || 0, 10);
+  }
+
+  // Query 2: somente conversões PURCHASE por data
+  var queryConvHist = [
+    "SELECT segments.date, segments.conversion_action_category,",
+    "  metrics.conversions, metrics.conversions_value",
+    "FROM campaign",
+    "WHERE segments.date BETWEEN '" + fmt(startDate) + "' AND '" + fmt(endDate) + "'",
+    "  AND campaign.status != 'REMOVED'",
+    "  AND segments.conversion_action_category = 'PURCHASE'"
+  ].join(" ");
+  var rConvH = AdsApp.search(queryConvHist);
+  while (rConvH.hasNext()) {
+    var row = rConvH.next();
+    var date = row.segments.date;
+    if (!byDate[date]) byDate[date] = { cost:0, impr:0, clicks:0, conv:0, convVal:0 };
+    byDate[date].conv    += parseFloat(row.metrics.conversions      || 0);
+    byDate[date].convVal += parseFloat(row.metrics.conversionsValue || 0);
   }
 
   var dates   = Object.keys(byDate).sort();
@@ -314,34 +349,46 @@ function backfillCampaignHistory() {
   startDate.setDate(startDate.getDate() - DAYS_BACK);
   var fmt = function(d) { return Utilities.formatDate(d, TIMEZONE, "yyyy-MM-dd"); };
 
-  var query = [
-    "SELECT",
-    "  segments.date,",
-    "  campaign.name,",
-    "  metrics.cost_micros,",
-    "  metrics.conversions,",
-    "  metrics.conversions_value",
+  var now = Utilities.formatDate(new Date(), TIMEZONE, "dd/MM/yyyy HH:mm");
+
+  // Query 1: custo por data+campanha
+  var byCamp = {};
+  var qCostC = [
+    "SELECT segments.date, campaign.name, metrics.cost_micros",
     "FROM campaign",
     "WHERE segments.date BETWEEN '" + fmt(startDate) + "' AND '" + fmt(endDate) + "'",
     "  AND campaign.status != 'REMOVED'",
     "  AND metrics.cost_micros > 0"
   ].join(" ");
-
-  var report = AdsApp.search(query);
-  var now    = Utilities.formatDate(new Date(), TIMEZONE, "dd/MM/yyyy HH:mm");
-  var rows   = [];
-
-  while (report.hasNext()) {
-    var row = report.next();
-    rows.push([
-      row.segments.date,
-      row.campaign.name,
-      round2((row.metrics.costMicros || 0) / 1e6),
-      round2(parseFloat(row.metrics.conversions    || 0)),
-      round2(parseFloat(row.metrics.conversionsValue || 0)),
-      now
-    ]);
+  var rCC = AdsApp.search(qCostC);
+  while (rCC.hasNext()) {
+    var r = rCC.next();
+    var k = r.segments.date + "|" + r.campaign.name;
+    if (!byCamp[k]) byCamp[k] = { date: r.segments.date, name: r.campaign.name, cost:0, conv:0, convVal:0 };
+    byCamp[k].cost += (r.metrics.costMicros || 0) / 1e6;
   }
+
+  // Query 2: somente PURCHASE por data+campanha
+  var qConvC = [
+    "SELECT segments.date, campaign.name, segments.conversion_action_category,",
+    "  metrics.conversions, metrics.conversions_value",
+    "FROM campaign",
+    "WHERE segments.date BETWEEN '" + fmt(startDate) + "' AND '" + fmt(endDate) + "'",
+    "  AND campaign.status != 'REMOVED'",
+    "  AND segments.conversion_action_category = 'PURCHASE'"
+  ].join(" ");
+  var rConvC = AdsApp.search(qConvC);
+  while (rConvC.hasNext()) {
+    var r = rConvC.next();
+    var k = r.segments.date + "|" + r.campaign.name;
+    if (!byCamp[k]) byCamp[k] = { date: r.segments.date, name: r.campaign.name, cost:0, conv:0, convVal:0 };
+    byCamp[k].conv    += parseFloat(r.metrics.conversions      || 0);
+    byCamp[k].convVal += parseFloat(r.metrics.conversionsValue || 0);
+  }
+
+  var rows = Object.values(byCamp).map(function(v) {
+    return [v.date, v.name, round2(v.cost), round2(v.conv), round2(v.convVal), now];
+  });
 
   rows.sort(function(a, b) {
     var d = String(b[0]).localeCompare(String(a[0]));
@@ -355,6 +402,172 @@ function backfillCampaignHistory() {
   }
   sh.autoResizeColumns(1, CAMP_HEADERS.length);
   Logger.log("backfillCampaignHistory: " + rows.length + " linhas gravadas em " + CAMP_SHEET_NAME);
+}
+
+// ─── CONVERSÕES DIÁRIAS (checkouts + purchases) ───────────────────────────────
+var CONV_SHEET_NAME    = "GAds_Conversoes";
+var CONV_HEADERS       = ["dia", "acao", "conversoes", "valor_conv", "atualizado_em"];
+
+/**
+ * Grava as conversões de HOJE em GAds_Conversoes:
+ *   - begin_checkout → metrics.all_conversions (é conversão secundária)
+ *   - purchase       → metrics.conversions      (é conversão primária)
+ *
+ * Formato de saída:
+ *   dia | acao | conversoes | valor_conv | atualizado_em
+ */
+function updateConversoesDiarias_(ss, today, now) {
+  var sh = ss.getSheetByName(CONV_SHEET_NAME);
+  if (!sh) sh = ss.insertSheet(CONV_SHEET_NAME);
+
+  // ── Query: BEGIN_CHECKOUT (secundária → all_conversions) ─────────────────
+  var checkouts = 0;
+  var qCheckout = [
+    "SELECT segments.conversion_action_category,",
+    "  metrics.all_conversions, metrics.all_conversions_value",
+    "FROM campaign",
+    "WHERE segments.date DURING TODAY",
+    "  AND campaign.status != 'REMOVED'",
+    "  AND segments.conversion_action_category = 'BEGIN_CHECKOUT'"
+  ].join(" ");
+  var rCk = AdsApp.search(qCheckout);
+  while (rCk.hasNext()) {
+    var r = rCk.next();
+    checkouts += parseFloat(r.metrics.allConversions || 0);
+  }
+
+  // ── Query: PURCHASE (primária → conversions) ──────────────────────────────
+  var purchases = 0;
+  var purchaseVal = 0;
+  var qPurchase = [
+    "SELECT segments.conversion_action_category,",
+    "  metrics.conversions, metrics.conversions_value",
+    "FROM campaign",
+    "WHERE segments.date DURING TODAY",
+    "  AND campaign.status != 'REMOVED'",
+    "  AND segments.conversion_action_category = 'PURCHASE'"
+  ].join(" ");
+  var rPu = AdsApp.search(qPurchase);
+  while (rPu.hasNext()) {
+    var r = rPu.next();
+    purchases   += parseFloat(r.metrics.conversions      || 0);
+    purchaseVal += parseFloat(r.metrics.conversionsValue || 0);
+  }
+
+  // ── Monta as linhas de hoje ───────────────────────────────────────────────
+  var newRows = [
+    [today, "begin_checkout", round2(checkouts),  0,                   now],
+    [today, "purchase",       round2(purchases),  round2(purchaseVal), now]
+  ];
+
+  // ── Lê dados existentes, remove linhas de hoje e reescreve ─────────────────
+  var existing = sh.getDataRange().getValues();
+  var hasHeader = existing.length > 0 &&
+                  String(existing[0][0]).trim().toLowerCase() === "dia";
+
+  if (!hasHeader) {
+    sh.clearContents();
+    sh.getRange(1, 1, 1, CONV_HEADERS.length).setValues([CONV_HEADERS]);
+    existing = [CONV_HEADERS.slice()];
+  }
+
+  // Mantém apenas linhas que NÃO sejam de hoje
+  var kept = existing.slice(1).filter(function(row) {
+    var rawDate = row[0];
+    var ds = (rawDate instanceof Date)
+      ? Utilities.formatDate(rawDate, "UTC", "yyyy-MM-dd")
+      : String(rawDate || "").trim().substring(0, 10);
+    return ds !== today;
+  });
+
+  // Acrescenta as linhas de hoje
+  var allData = kept.concat(newRows);
+
+  // Ordena: data desc, acao asc
+  allData.sort(function(a, b) {
+    var d = String(b[0]).localeCompare(String(a[0]));
+    return d !== 0 ? d : String(a[1]).localeCompare(String(b[1]));
+  });
+
+  sh.clearContents();
+  sh.getRange(1, 1, 1, CONV_HEADERS.length).setValues([CONV_HEADERS]);
+  if (allData.length > 0) {
+    sh.getRange(2, 1, allData.length, CONV_HEADERS.length).setValues(allData);
+  }
+  sh.autoResizeColumns(1, CONV_HEADERS.length);
+
+  Logger.log("GAds_Conversoes: " + today + " | purchases=" + round2(purchases));
+}
+
+// ─── BACKFILL: últimos N dias de purchases ────────────────────────────────────
+/**
+ * Popula histórico de PURCHASE em GAds_Conversoes (60 dias).
+ * Chamado automaticamente pelo main() quando a aba tem menos de 7 linhas.
+ * Checkouts são derivados do Pagar.me em pagarme-unified.js.
+ */
+function backfillConversoes() {
+  var DAYS_BACK = 60;
+  var ss  = SpreadsheetApp.openById(SHEET_ID);
+  var sh  = ss.getSheetByName(CONV_SHEET_NAME);
+  if (!sh) sh = ss.insertSheet(CONV_SHEET_NAME);
+
+  var endDate   = new Date();
+  var startDate = new Date();
+  startDate.setDate(startDate.getDate() - DAYS_BACK);
+  var fmt = function(d) { return Utilities.formatDate(d, TIMEZONE, "yyyy-MM-dd"); };
+  var now = Utilities.formatDate(new Date(), TIMEZONE, "dd/MM/yyyy HH:mm");
+  var range = "'" + fmt(startDate) + "' AND '" + fmt(endDate) + "'";
+
+  // BEGIN_CHECKOUT (secundária → all_conversions)
+  var byDate = {};
+  var qCk = [
+    "SELECT segments.date, segments.conversion_action_category,",
+    "  metrics.all_conversions",
+    "FROM campaign",
+    "WHERE segments.date BETWEEN " + range,
+    "  AND campaign.status != 'REMOVED'",
+    "  AND segments.conversion_action_category = 'BEGIN_CHECKOUT'"
+  ].join(" ");
+  var rCk = AdsApp.search(qCk);
+  while (rCk.hasNext()) {
+    var r = rCk.next();
+    var dt = r.segments.date;
+    if (!byDate[dt]) byDate[dt] = { ck:0, pu:0, puVal:0 };
+    byDate[dt].ck += parseFloat(r.metrics.allConversions || 0);
+  }
+
+  // PURCHASE (primária → conversions)
+  var qPu = [
+    "SELECT segments.date, segments.conversion_action_category,",
+    "  metrics.conversions, metrics.conversions_value",
+    "FROM campaign",
+    "WHERE segments.date BETWEEN " + range,
+    "  AND campaign.status != 'REMOVED'",
+    "  AND segments.conversion_action_category = 'PURCHASE'"
+  ].join(" ");
+  var rPu = AdsApp.search(qPu);
+  while (rPu.hasNext()) {
+    var r = rPu.next();
+    var dt = r.segments.date;
+    if (!byDate[dt]) byDate[dt] = { ck:0, pu:0, puVal:0 };
+    byDate[dt].pu    += parseFloat(r.metrics.conversions      || 0);
+    byDate[dt].puVal += parseFloat(r.metrics.conversionsValue || 0);
+  }
+
+  var rows = [];
+  Object.keys(byDate).sort().reverse().forEach(function(dt) {
+    var v = byDate[dt];
+    rows.push([dt, "begin_checkout", round2(v.ck), 0,             now]);
+    rows.push([dt, "purchase",       round2(v.pu), round2(v.puVal), now]);
+  });
+
+  sh.clearContents();
+  sh.getRange(1, 1, 1, CONV_HEADERS.length).setValues([CONV_HEADERS]);
+  if (rows.length > 0) {
+    sh.getRange(2, 1, rows.length, CONV_HEADERS.length).setValues(rows);
+  }
+  sh.autoResizeColumns(1, CONV_HEADERS.length);
+  Logger.log("backfillConversoes: " + Object.keys(byDate).length + " dias gravados.");
 }
 
 function round2(n) { return Math.round(n * 100) / 100; }

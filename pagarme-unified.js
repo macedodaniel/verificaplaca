@@ -1279,17 +1279,6 @@ function syncBureauFromSupabase() {
 const DASHBOARD_SHEET = "Dashboard";
 
 /**
- * syncDashboard — consolida GAds_Diario, GAds_Conversoes,
- * RevenueDaily e OrderItems em uma única aba "Dashboard".
- *
- * Colunas de saída:
- *   data | custo_ads | receita | pedidos | checkouts | compras
- *   cac  | roas      | margem_pct | pedidos_upsell | tx_upsell_pct
- *
- * Chamado automaticamente ao final de syncAll (trigger horário).
- * Preserva dados de upsell históricos (OrderItems é janela recente).
- */
-/**
  * syncDashboard — consolida GAds + Pagar.me + Supabase Bureau em "Dashboard".
  *
  * Colunas de saída:
@@ -1314,7 +1303,7 @@ function syncDashboard() {
     const gadsConv  = _readGAdsConversoes_(ss);
     const revDaily  = _readRevDaily_(ss);
     const bureauMap = _readBureauDaily_(ss);
-    const upsellMap = _readUpsellDaily_(ss);  // ← lê UpsellDaily (histórico permanente)
+    const upsellMap = _readUpsellDaily_(ss);
 
     const dest = getOrCreateSheet_(DASHBOARD_SHEET);
 
@@ -1645,7 +1634,12 @@ function _readGAdsConversoes_(ss) {
 
   for (let i = headerIdx + 1; i < values.length; i++) {
     const row    = values[i];
-    const dayStr = String(row[cDay] || "").trim();
+    const rawDay = row[cDay];
+    // Sheets auto-converte strings "yyyy-MM-dd" para Date (meia-noite UTC).
+    // Formatar com TZ (São Paulo, UTC-3) daria o dia ANTERIOR → usar "UTC".
+    const dayStr = rawDay instanceof Date
+      ? Utilities.formatDate(rawDay, "UTC", "yyyy-MM-dd")
+      : String(rawDay || "").trim();
     if (!dayStr || /total|subtotal/i.test(dayStr)) continue;
 
     const action = cAction >= 0 ? _normGAds_(row[cAction]) : "";
