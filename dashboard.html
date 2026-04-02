@@ -383,7 +383,7 @@
       <div class="date-dropdown" id="dateDD">
         <div class="date-presets">
           <div class="date-preset" onclick="setPreset('today','Hoje',event)">Hoje</div>
-          <div class="date-preset" onclick="setPreset('tomorrow','Amanhã',event)">Amanhã</div>
+          <div class="date-preset" onclick="setPreset('yesterday','Ontem',event)">Ontem</div>
           <div class="date-preset" onclick="setPreset('7d','Últimos 7 dias',event)">Últimos 7 dias</div>
           <div class="date-preset" onclick="setPreset('14d','Últimos 14 dias',event)">Últimos 14 dias</div>
           <div class="date-preset active" onclick="setPreset('month','Este mês',event)">Este mês <span id="currentMonthLbl" style="font-size:10px;color:var(--text-muted)"></span></div>
@@ -697,8 +697,8 @@ function setPreset(preset, label, e) {
   let fromDate, toDate = today;
   if (preset === 'today') {
     fromDate = today;
-  } else if (preset === 'tomorrow') {
-    const d = new Date(now); d.setDate(d.getDate()+1); fromDate = toDate = iso(d);
+  } else if (preset === 'yesterday') {
+    const d = new Date(now); d.setDate(d.getDate()-1); fromDate = toDate = iso(d);
   } else if (preset === '7d') {
     const d = new Date(now); d.setDate(d.getDate()-6); fromDate = iso(d);
   } else if (preset === '14d') {
