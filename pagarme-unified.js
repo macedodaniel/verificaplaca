@@ -348,15 +348,16 @@ function syncUpsellDaily() {
   const hours   = Math.max(parseInt(cfg.orderitems_lookback_hours || "24", 10) || 24, 1);
   const minDate = new Date(Date.now() - hours * 3600 * 1000);
 
-  // 1ª passagem: quais order_ids têm pelo menos 1 ADDON?
+  // 1ª passagem: quais order_ids têm pelo menos 1 ADDON ou BUNDLE?
   const addonOrders = new Set();
   for (let i = 1; i < itemValues.length; i++) {
-    if (String(itemValues[i][cType] || "").toUpperCase() === "ADDON") {
+    const t = String(itemValues[i][cType] || "").toUpperCase();
+    if (t === "ADDON" || t === "BUNDLE") {
       addonOrders.add(String(itemValues[i][cOrderId] || ""));
     }
   }
 
-  // 2ª passagem: data de cada pedido addon (distinct, paid, dentro da janela)
+  // 2ª passagem: data de cada pedido addon/bundle (distinct, paid, dentro da janela)
   const recentMap = new Map(); // "yyyy-MM-dd" → count
   const seen      = new Set();
   for (let i = 1; i < itemValues.length; i++) {
@@ -439,15 +440,16 @@ function syncUpsellFull() {
     return;
   }
 
-  // 1ª passagem: quais order_ids têm pelo menos 1 ADDON?
+  // 1ª passagem: quais order_ids têm pelo menos 1 ADDON ou BUNDLE?
   const addonOrders = new Set();
   for (let i = 1; i < itemValues.length; i++) {
-    if (String(itemValues[i][cType] || "").toUpperCase() === "ADDON") {
+    const t = String(itemValues[i][cType] || "").toUpperCase();
+    if (t === "ADDON" || t === "BUNDLE") {
       addonOrders.add(String(itemValues[i][cOrderId] || ""));
     }
   }
 
-  // 2ª passagem: conta distinct paid orders com addon, por dia — SEM filtro de janela
+  // 2ª passagem: conta distinct paid orders com addon/bundle, por dia — SEM filtro de janela
   const finalMap = new Map(); // "yyyy-MM-dd" → count
   const seen     = new Set();
   for (let i = 1; i < itemValues.length; i++) {
