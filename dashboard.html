@@ -130,8 +130,10 @@
     .kpi-delta.neg { color: var(--red); }
     .kpi-delta.neu { color: var(--text-muted); }
     .kpi-card.alert-pulse { border-color: #fca5a5 !important; box-shadow: 0 0 0 2px rgba(220,38,38,.12) !important; }
-    /* Day-of-week — desktop grid, mobile carousel */
-    .dow-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+    /* Day-of-week — desktop grid 2 linhas (4+3), mobile carousel */
+    .dow-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+                align-content: stretch; }
+    .dow-cell { align-self: stretch; }
     .dow-cell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
                 padding: 12px 8px; text-align: center; box-shadow: var(--shadow); }
     .dow-day  { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;
@@ -226,7 +228,7 @@
     /* Chart grids */
     .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
     .grid-1-1 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .grid-4-1 { display: grid; grid-template-columns: 4fr 1fr; gap: 10px; align-items: start; }
+    .grid-4-1 { display: grid; grid-template-columns: 4fr 1fr; gap: 10px; align-items: stretch; }
     @media (max-width: 900px) { .grid-2-1, .grid-1-1, .grid-4-1 { grid-template-columns: 1fr; } }
 
     /* Gauges */
@@ -500,16 +502,16 @@
   <!-- Performance por Dia da Semana (80%) + Conversões por Campanha (20%) -->
   <div class="section-label" style="margin-top:24px">Performance por Dia da Semana</div>
   <div class="grid-4-1">
-    <div>
-      <div class="dow-grid" id="dowGrid"></div>
+    <div style="display:flex;flex-direction:column;">
+      <div class="dow-grid" id="dowGrid" style="flex:1;"></div>
       <div class="dow-dots" id="dowDots"></div>
     </div>
-    <div class="card">
+    <div class="card" style="display:flex;flex-direction:column;">
       <div class="card-header">
         <div><div class="card-title">Conversões por Campanha</div>
              <div class="card-subtitle" id="convSub">Total do período</div></div>
       </div>
-      <div style="height:200px"><canvas id="convChart"></canvas></div>
+      <div style="flex:1;min-height:160px;position:relative;overflow:hidden;"><canvas id="convChart"></canvas></div>
     </div>
   </div>
 
@@ -530,12 +532,12 @@
         </table>
       </div>
     </div>
-    <div class="card">
+    <div class="card" style="display:flex;flex-direction:column;">
       <div class="card-header">
         <div><div class="card-title">Por Tipo</div>
              <div class="card-subtitle">Distribuição de upsells</div></div>
       </div>
-      <div style="height:200px"><canvas id="upsellPieChart"></canvas></div>
+      <div style="flex:1;min-height:160px;position:relative;overflow:hidden;"><canvas id="upsellPieChart"></canvas></div>
     </div>
   </div>
 
