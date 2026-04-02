@@ -476,7 +476,7 @@
           <th class="num">Investimento</th>
           <th class="num">% Gasto</th>
           <th class="num">Receita</th>
-          <th class="num">Lucro</th>
+          <th class="num">Lucro Bruto</th>
           <th class="num">ROAS</th>
           <th style="min-width:130px">CAC</th>
         </tr></thead>
@@ -721,6 +721,9 @@ function totals() {
            margin:rev>0?pft/rev:0, ticket:TICKET, convRate, upsell };
 }
 function campTotals() {
+  // Bureau total do período (distribuído proporcionalmente à receita por campanha)
+  const totalBureau = filtered.reduce((s,d) => s + (d.costBureau||0), 0);
+
   // ── Dados reais via CampaignDaily ──────────────────────────────────────────
   if (CAMPAIGN_DAILY_DATA.length > 0 && filtered.length > 0) {
     const minDate = filtered[0].dateStr, maxDate = filtered[filtered.length-1].dateStr;
@@ -738,23 +741,37 @@ function campTotals() {
       agg.set(base.name, prev);
     }
     if (agg.size > 0) {
-      return Array.from(agg.values()).map(c => ({
-        ...c, color: CAMP_COLORS[c.name] || '#6b6b6b',
-        pft: +(c.rev - c.cost).toFixed(2),
-        cac:  c.conv > 0 ? +(c.cost / c.conv).toFixed(2) : 0,
-        roas: c.cost > 0 ? +(c.rev  / c.cost).toFixed(2) : 0,
-        convShare: 0, costShare: 0,
-      })).sort((a,b) => b.conv - a.conv);
+      const camps = Array.from(agg.values());
+      const totalRev = camps.reduce((s,c) => s + c.rev, 0);
+      return camps.map(c => {
+        // Bureau proporcional à participação de receita da campanha
+        const bureauShare = totalRev > 0 ? totalBureau * (c.rev / totalRev) : 0;
+        const costTotal   = +(c.cost + bureauShare).toFixed(2);
+        const pft         = +(c.rev - costTotal).toFixed(2);
+        return {
+          ...c, color: CAMP_COLORS[c.name] || '#6b6b6b',
+          costTotal, bureauShare: +bureauShare.toFixed(2),
+          pft,
+          cac:  c.conv > 0 ? +(c.cost / c.conv).toFixed(2) : 0,  // CAC = só Ads (padrão de mercado)
+          roas: c.cost > 0 ? +(c.rev  / c.cost).toFixed(2) : 0,
+          convShare: 0, costShare: 0,
+        };
+      }).sort((a,b) => b.conv - a.conv);
     }
   }
+
   // ── Fallback: estimativas por proporção (quando CampaignDaily não disponível) ──
   return BASE_CAMPS
     .filter(c=>!activeCamp||c.name===activeCamp)
     .map(c=>{
-      const cost=filtered.reduce((s,d)=>s+d.cost,0)*c.costShare;
-      const conv=filtered.reduce((s,d)=>s+d.conv,0)*c.convShare;
-      const rev=conv*TICKET, pft=rev-cost;
-      return {...c, color:CAMP_COLORS[c.name], cost, conv, rev, pft, cac:conv>0?cost/conv:0, roas:cost>0?rev/cost:0};
+      const cost    = filtered.reduce((s,d)=>s+d.cost,0)*c.costShare;
+      const conv    = filtered.reduce((s,d)=>s+d.conv,0)*c.convShare;
+      const rev     = conv*TICKET;
+      const bureauShare = totalBureau * c.costShare; // estima bureau pela mesma proporção de custo
+      const costTotal   = +(cost + bureauShare).toFixed(2);
+      const pft = +(rev - costTotal).toFixed(2);
+      return {...c, color:CAMP_COLORS[c.name], cost, costTotal, bureauShare:+bureauShare.toFixed(2),
+              conv, rev, pft, cac:conv>0?cost/conv:0, roas:cost>0?rev/cost:0};
     })
     .sort((a,b)=>b.conv-a.conv);
 }
@@ -1248,7 +1265,7 @@ function buildTable() {
       <td class="num">${fmtR(c.cost)}</td>
       <td class="num" style="color:var(--text-secondary);font-weight:600">${spendPct}</td>
       <td class="num">${fmtR(c.rev)}</td>
-      <td class="num" style="color:${c.pft>0?'var(--green)':'var(--red)'}">${fmtR(c.pft)}</td>
+      <td class="num" style="color:${c.pft>0?'var(--green)':'var(--red)'}" title="Receita − Ads − Bureau (${fmtR(c.bureauShare||0)})">${fmtR(c.pft)}</td>
       <td class="num">${fmtN(c.roas,2,'')}×</td>
       <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div>
           <span style="font-size:12px;font-variant-numeric:tabular-nums;color:${col};min-width:46px;text-align:right">${fmtR(c.cac)}</span></div></td>`;
