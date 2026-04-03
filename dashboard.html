@@ -131,9 +131,9 @@
     .kpi-delta.neu { color: var(--text-muted); }
     .kpi-card.alert-pulse { border-color: #fca5a5 !important; box-shadow: 0 0 0 2px rgba(220,38,38,.12) !important; }
     /* Day-of-week — desktop grid 2 linhas (4+3), mobile carousel */
-    .dow-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-                align-content: stretch; }
-    .dow-cell { align-self: stretch; }
+    .dow-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;
+                align-items: stretch; }
+    .dow-cell { align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; }
     .dow-cell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
                 padding: 12px 8px; text-align: center; box-shadow: var(--shadow); }
     .dow-day  { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;
@@ -1711,8 +1711,9 @@ function buildDayOfWeek() {
       <div class="dow-val" style="color:${a.pft>=0?'var(--green)':'var(--red)'}">${fmtR(a.rev)}</div>
       <div class="dow-sub">Lucro: ${fmtR(a.pft)}</div>
       <div class="dow-sub">${a.count} dia${a.count>1?'s':''}</div>
-      ${isBest  ? '<div class="dow-badge best">✓ Melhor</div>'  : ''}
-      ${isWorst ? '<div class="dow-badge worst">⚠ Pior</div>' : ''}
+      ${isBest  ? '<div class="dow-badge best">✓ Melhor</div>'
+      : isWorst ? '<div class="dow-badge worst">⚠ Pior</div>'
+      :           '<div class="dow-badge" style="visibility:hidden">·</div>'}
     ` : `<div class="dow-val" style="color:var(--text-muted)">—</div>`);
     grid.appendChild(cell);
   });
