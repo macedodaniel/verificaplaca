@@ -19,7 +19,9 @@
       --shadow-md: 0 4px 12px rgba(0,0,0,.08);
     }
     body { background: var(--bg); color: var(--text-primary); min-height: 100vh;
-           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+           overflow-x: hidden; }
+    canvas { max-width: 100%; }
 
     /* Header */
     header { background: var(--surface); border-bottom: 1px solid var(--border);
@@ -215,7 +217,7 @@
 
     /* Cards */
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-            padding: 18px 20px; box-shadow: var(--shadow); }
+            padding: 18px 20px; box-shadow: var(--shadow); min-width: 0; }
     .card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
     .card-title { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
     .card-subtitle { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
@@ -245,7 +247,7 @@
     .gauge-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
     /* Table */
-    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; position: relative; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; position: relative; max-width: 100%; }
     table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 12.5px; }
     /* Scroll hint: fade + indicator bar visible on mobile */
     @media (max-width: 700px) {
@@ -302,6 +304,10 @@
       .funnel-stats { min-width: 90px; }
       .funnel-count { font-size: 12px; }
       .funnel-bar { height: 30px; }
+      .card { padding: 14px 12px; }
+      .card-header { margin-bottom: 10px; }
+      table { min-width: 360px; font-size: 11.5px; }
+      th, td { padding: 7px 6px; }
     }
 
     /* ── Dark Mode ────────────────────────────────────────────────────────── */
@@ -492,7 +498,7 @@
           <th class="num">Receita</th>
           <th class="num">Lucro Bruto</th>
           <th class="num">ROAS</th>
-          <th style="min-width:130px">CAC</th>
+          <th class="num">CAC</th>
         </tr></thead>
         <tbody></tbody>
       </table>
