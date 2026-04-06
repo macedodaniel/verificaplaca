@@ -1610,9 +1610,10 @@ function buildTodayPace() {
 
   // Média dos últimos 30 dias (excluindo hoje)
   const past   = ALL_DAYS.filter(d => d.dateStr < todayStr).slice(-30);
-  const avgRev  = past.length ? past.reduce((s,d)=>s+d.revenue,0)/past.length : 0;
-  const avgCost = past.length ? past.reduce((s,d)=>s+(d.costTotal||0),0)/past.length : 0;
-  const avgConv = past.length ? past.reduce((s,d)=>s+d.conv,0)/past.length : 0;
+  const avgRev    = past.length ? past.reduce((s,d)=>s+d.revenue,0)/past.length : 0;
+  const avgCost   = past.length ? past.reduce((s,d)=>s+(d.costTotal||0),0)/past.length : 0;
+  const avgConv   = past.length ? past.reduce((s,d)=>s+d.conv,0)/past.length : 0;
+  const avgProfit = past.length ? past.reduce((s,d)=>s+(d.profit||0),0)/past.length : 0;
 
   // Fração do dia decorrida (horário de Brasília aproximado pelo navegador)
   const hourFrac   = (now.getHours()*60 + now.getMinutes()) / 1440;
@@ -1622,8 +1623,9 @@ function buildTodayPace() {
   const paceTxt    = paceRatio === null ? '—' : (paceRatio >= 0.9 ? '✓ No ritmo' : paceRatio >= 0.7 ? '⚠ Abaixo do ritmo' : '↓ Bem abaixo');
 
   // Projeção EOD (end of day)
-  const eodRev  = hourFrac > 0.05 ? +(today.revenue / hourFrac).toFixed(2) : null;
-  const eodCost = hourFrac > 0.05 ? +(( today.costTotal||0) / hourFrac).toFixed(2) : null;
+  const eodRev    = hourFrac > 0.05 ? +(today.revenue / hourFrac).toFixed(2) : null;
+  const eodCost   = hourFrac > 0.05 ? +((today.costTotal||0) / hourFrac).toFixed(2) : null;
+  const eodProfit = hourFrac > 0.05 ? +((today.profit||0) / hourFrac).toFixed(2) : null;
 
   // Ontem
   const yestDate = new Date(now); yestDate.setDate(yestDate.getDate()-1);
@@ -1646,15 +1648,15 @@ function buildTodayPace() {
           <span class="pace-val" style="color:var(--green)">${fmtR(today.revenue)}</span>
           <span class="pace-sub">${revPctOfAvg}% da média diária · esp. ${fmtR(expectedRev)}</span>
         </div>
-        <div class="pace-stat has-tip" data-tip="Estimativa extrapolando o ritmo atual\naté o fim do dia (receita ÷ % do dia decorrido).">
-          <span class="pace-lbl">Projeção fim do dia</span>
+        <div class="pace-stat has-tip" data-tip="Estimativa de receita extrapolando o ritmo atual\naté o fim do dia (receita ÷ % do dia decorrido).\nComparado à média dos últimos 30 dias.">
+          <span class="pace-lbl">Receita projetada EOD</span>
           <span class="pace-val" style="color:${eodRev&&eodRev>=avgRev*0.9?'var(--green)':'var(--amber)'}">${eodRev?fmtR(eodRev):'—'}</span>
           <span class="pace-sub">Média: ${fmtR(avgRev)}/dia</span>
         </div>
-        <div class="pace-stat has-tip" data-tip="Resultado completo do dia anterior.\nÚtil para comparar com o ritmo de hoje.">
-          <span class="pace-lbl">Ontem (completo)</span>
-          <span class="pace-val">${yest?fmtR(yest.revenue):'—'}</span>
-          <span class="pace-sub">${yest?'Lucro: '+fmtR(yest.profit||0):'sem dados'}</span>
+        <div class="pace-stat has-tip" data-tip="Estimativa de lucro bruto extrapolando o ritmo atual\naté o fim do dia (lucro atual ÷ % do dia decorrido).\nLucro = receita − custo_ads − custo_bureau.">
+          <span class="pace-lbl">Lucro projetado EOD</span>
+          <span class="pace-val" style="color:${eodProfit===null?'inherit':eodProfit>=0?'var(--green)':'var(--red)'}">${eodProfit!==null?fmtR(eodProfit):'—'}</span>
+          <span class="pace-sub">Hoje: ${fmtR(today.profit||0)} · Média: ${fmtR(avgProfit)}/dia</span>
         </div>
         <div class="pace-stat has-tip" data-tip="Custo total (Ads + Bureau) acumulado hoje.\nProjeção = custo atual ÷ % do dia decorrido.">
           <span class="pace-lbl">Custo COGS até agora</span>
@@ -1666,10 +1668,10 @@ function buildTodayPace() {
           <span class="pace-val" style="color:${today.cac&&today.cac<=TARGET_CPA?'var(--green)':today.cac?'var(--red)':'inherit'}">${today.cac?fmtR(today.cac):'—'}</span>
           <span class="pace-sub">Meta: ${fmtR(TARGET_CPA)}</span>
         </div>
-        <div class="pace-stat has-tip" data-tip="Total de pedidos (conversões) registrados hoje.\nComparado à média dos últimos 30 dias.">
+        <div class="pace-stat has-tip" data-tip="Total de pedidos (conversões) registrados hoje.\nComparado à média dos últimos 30 dias.\nOntem: receita e lucro do dia anterior completo.">
           <span class="pace-lbl">Conversões</span>
           <span class="pace-val">${fmtN(today.conv,0,'')}</span>
-          <span class="pace-sub">Média: ${fmtN(avgConv,1,'')}/dia</span>
+          <span class="pace-sub">Média: ${fmtN(avgConv,1,'')}/dia${yest?' · Ontem: '+fmtR(yest.revenue)+' / Lucro '+fmtR(yest.profit||0):''}</span>
         </div>
       </div>
       <div class="pace-bar-wrap">
