@@ -503,8 +503,6 @@
           <th class="num">Conv.</th>
           <th class="num">Investimento</th>
           <th class="num">% Gasto</th>
-          <th class="num">Receita</th>
-          <th class="num">Lucro Bruto</th>
           <th class="num">ROAS</th>
           <th class="num">CAC</th>
         </tr></thead>
@@ -1317,7 +1315,7 @@ function buildTable() {
   if (_campSort.col >= 0) {
     sorted.sort((a, b) => {
       if (_campSort.col === 0) return a.name.localeCompare(b.name) * _campSort.dir;
-      const vals = [null, b=>b.conv, b=>b.cost, b=>b.cost, b=>b.rev, b=>b.pft, b=>b.roas, b=>b.cac];
+      const vals = [null, b=>b.conv, b=>b.cost, b=>b.cost, b=>b.roas, b=>b.cac];
       const fn = vals[_campSort.col]; if (!fn) return 0;
       return (fn(a) - fn(b)) * _campSort.dir;
     });
@@ -1336,8 +1334,6 @@ function buildTable() {
       <td class="num">${fmtN(c.conv,1,'')}</td>
       <td class="num">${fmtR(c.cost)}</td>
       <td class="num" style="color:var(--text-secondary);font-weight:600">${spendPct}</td>
-      <td class="num">${fmtR(c.rev)}</td>
-      <td class="num" style="color:${c.pft>0?'var(--green)':'var(--red)'}" title="Receita − Ads − Bureau (${fmtR(c.bureauShare||0)})">${fmtR(c.pft)}</td>
       <td class="num">${fmtN(c.roas,2,'')}×</td>
       <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div>
           <span style="font-size:12px;font-variant-numeric:tabular-nums;color:${col};min-width:46px;text-align:right">${fmtR(c.cac)}</span></div></td>`;
@@ -1359,8 +1355,6 @@ function buildTable() {
     <td class="num">${fmtN(totConv,1,'')}</td>
     <td class="num">${fmtR(totCost)}</td>
     <td class="num">100%</td>
-    <td class="num">${fmtR(totRev)}</td>
-    <td class="num" style="color:${totPft>=0?'var(--green)':'var(--red)'}">${fmtR(totPft)}</td>
     <td class="num">${fmtN(totRoas,2,'')}×</td>
     <td><span style="font-size:12px;font-variant-numeric:tabular-nums;color:${totCol}">${fmtR(totCac)}</span></td>`;
   tbody.appendChild(tfoot);
@@ -1712,11 +1706,11 @@ function buildDayOfWeek() {
       : { rev: 0, pft: 0, cost: 0, count: 0 }
   );
 
-  // Best/worst by avg revenue (only among days that have data)
+  // Best/worst by avg profit (only among days that have data)
   const withData = avgs.map((a,i) => ({...a, i})).filter(a => a.count > 0);
   if (!withData.length) return;
-  const bestDow  = withData.reduce((a,b) => b.rev > a.rev ? b : a).i;
-  const worstDow = withData.reduce((a,b) => b.rev < a.rev ? b : a).i;
+  const bestDow  = withData.reduce((a,b) => b.pft > a.pft ? b : a).i;
+  const worstDow = withData.reduce((a,b) => b.pft < a.pft ? b : a).i;
 
   // Render Mon→Sun (PT-BR order: 1,2,3,4,5,6,0)
   [1,2,3,4,5,6,0].forEach(dow => {
@@ -1726,8 +1720,8 @@ function buildDayOfWeek() {
     const cell = document.createElement('div');
     cell.className = 'dow-cell' + (isBest ? ' dow-best' : isWorst ? ' dow-worst' : '');
     cell.innerHTML = `<div class="dow-day">${DAYS[dow]}</div>` + (a.count > 0 ? `
-      <div class="dow-val" style="color:${a.pft>=0?'var(--green)':'var(--red)'}">${fmtR(a.rev)}</div>
-      <div class="dow-sub">Lucro: ${fmtR(a.pft)}</div>
+      <div class="dow-val" style="color:${a.pft>=0?'var(--green)':'var(--red)'}">${fmtR(a.pft)}</div>
+      <div class="dow-sub">Receita: ${fmtR(a.rev)}</div>
       <div class="dow-sub">${a.count} dia${a.count>1?'s':''}</div>
       ${isBest  ? '<div class="dow-badge best">✓ Melhor</div>'
       : isWorst ? '<div class="dow-badge worst">⚠ Pior</div>'
