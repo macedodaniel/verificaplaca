@@ -1325,8 +1325,8 @@ function buildTable() {
   const tbody = document.querySelector('#campaignTable tbody');
   tbody.innerHTML = '';
   sorted.forEach(c => {
-    const pct     = Math.round((c.cac/maxCac)*100);
-    const col     = c.cac<=TARGET_CPA?'#16a34a':c.cac<=TARGET_CPA*1.2?'#d97706':'#dc2626';
+    const pct     = Math.min(100, Math.round((c.cac/TARGET_CPA)*100));
+    const col     = c.cac <= TARGET_CPA ? '#16a34a' : '#dc2626';
     const spendPct = totalCostAllCamps > 0 ? fmtN((c.cost/totalCostAllCamps)*100,1)+'%' : '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1347,7 +1347,7 @@ function buildTable() {
   const totPft  = sorted.reduce((s,c)=>s+c.pft,  0);
   const totRoas = totCost > 0 ? +(totRev/totCost).toFixed(2) : 0;
   const totCac  = totConv > 0 ? +(totCost/totConv).toFixed(2) : 0;
-  const totCol  = totCac <= TARGET_CPA ? '#16a34a' : totCac <= TARGET_CPA*1.2 ? '#d97706' : '#dc2626';
+  const totCol  = totCac <= TARGET_CPA ? '#16a34a' : '#dc2626';
   const tfoot = document.createElement('tr');
   tfoot.className = 'tr-total';
   tfoot.innerHTML = `
